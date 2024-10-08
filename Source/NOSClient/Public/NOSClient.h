@@ -122,24 +122,26 @@ class NOSCLIENT_API NOSEventDelegates : public nos::app::IEventDelegates
 public:
 	virtual ~NOSEventDelegates() {}
 
-	virtual void OnAppConnected(nos::fb::Node const* appNode) override;
-	virtual void OnNodeUpdated(nos::fb::Node const& appNode) override;
-	virtual void OnContextMenuRequested(nos::app::AppContextMenuRequest const& request) override;
-	virtual void OnContextMenuCommandFired(nos::app::AppContextMenuAction const& action) override;
-	virtual void OnNodeRemoved() override;
-	virtual void OnPinValueChanged(nos::fb::UUID const& pinId, uint8_t const* data, size_t size, bool reset, uint64_t frameNumber) override;
-	virtual void OnPinShowAsChanged(nos::fb::UUID const& pinId, nos::fb::ShowAs newShowAs) override;
-	virtual void OnExecuteAppInfo(nos::app::AppExecuteInfo const* appExecuteInfo) override; 
-	virtual void OnFunctionCall(nos::app::FunctionCall const* functionCall) override;
-	virtual void OnNodeSelected(nos::fb::UUID const& nodeId) override;
-	virtual void OnNodeImported(nos::fb::Node const& appNode) override;
+	virtual void HandleEvent(const nos::app::EngineEvent* event) override;
 	virtual void OnConnectionClosed() override;
-	virtual void OnStateChanged(nos::app::ExecutionState newState) override;
-	virtual void OnConsoleCommand(nos::app::ConsoleCommand const* consoleCommand) override;
-	virtual void OnConsoleAutoCompleteSuggestionRequest(nos::app::ConsoleAutoCompleteSuggestionRequest const* consoleAutoCompleteSuggestionRequest) override;
-	virtual void OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest) override;
-	virtual void OnCloseApp() override;
-	virtual void OnExecuteStart(nos::app::AppExecuteStart const* appExecuteStart) override;
+	void OnAppConnected(nos::fb::Node const* appNode);
+	void OnNodeUpdated(nos::fb::Node const& appNode);
+	void OnContextMenuRequested(nos::app::AppContextMenuRequest const& request);
+	void OnContextMenuCommandFired(nos::app::AppContextMenuAction const& action);
+	void OnNodeRemoved();
+	void OnPinValueChanged(nos::fb::UUID const& pinId, uint8_t const* data, size_t size, bool reset, uint64_t frameNumber);
+	void OnPinShowAsChanged(nos::fb::UUID const& pinId, nos::fb::ShowAs newShowAs);
+	void OnExecuteAppInfo(nos::app::AppExecuteInfo const* appExecuteInfo);
+	void OnFunctionCall(nos::app::FunctionCall const* functionCall);
+	void OnNodeSelected(nos::fb::UUID const& nodeId);
+	void OnNodeImported(nos::fb::Node const& appNode);
+	void OnStateChanged(nos::app::ExecutionState newState);
+	void OnConsoleCommand(nos::app::ConsoleCommand const* consoleCommand);
+	void OnConsoleAutoCompleteSuggestionRequest(nos::app::ConsoleAutoCompleteSuggestionRequest const* consoleAutoCompleteSuggestionRequest);
+	void OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest);
+	void OnCloseApp();
+	void OnExecuteStart(nos::app::AppExecuteStart const* appExecuteStart);
+
 	FNOSClient* PluginClient;
 
 	ExecuteFrameNumberQueue ExecuteQueue{};
