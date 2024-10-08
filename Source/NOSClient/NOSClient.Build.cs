@@ -61,7 +61,8 @@ public class NOSClient : ModuleRules
 		System.Diagnostics.Process process = new System.Diagnostics.Process();
 		process.StartInfo.FileName = NosmanPath;
 		process.StartInfo.ArgumentList.Add("sdk-info");
-		process.StartInfo.ArgumentList.Add("1.2.0");
+		process.StartInfo.ArgumentList.Add("16.0.0");
+		process.StartInfo.ArgumentList.Add("process");
 		process.StartInfo.UseShellExecute = false;
 		process.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
 		process.StartInfo.RedirectStandardOutput = true;
@@ -73,36 +74,18 @@ public class NOSClient : ModuleRules
 		// Print stderr or stdout if failed
 		if (process.ExitCode != 0)
 		{
-			// New versions of Nosman can return specific SDK type
-			process = new System.Diagnostics.Process();
-			process.StartInfo.FileName = NosmanPath;
-			process.StartInfo.ArgumentList.Add("sdk-info");
-			process.StartInfo.ArgumentList.Add("15.0.0");
-			process.StartInfo.ArgumentList.Add("process");
-			process.StartInfo.UseShellExecute = false;
-			process.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
-			process.StartInfo.RedirectStandardOutput = true;
-			process.StartInfo.RedirectStandardError = true;
-			process.StartInfo.CreateNoWindow = true;
-			process.Start();
-			process.WaitForExit();
-			output = process.StandardOutput.ReadToEnd();
-			
-			if(process.ExitCode != 0)
+			Console.WriteLine();
+			LogError("Failed to get Nodos SDK info");
+			var errOut = process.StandardError.ReadToEnd();
+			if (!String.IsNullOrEmpty(errOut))
 			{
-				Console.WriteLine();
-				LogError("Failed to get Nodos SDK info");
-				var errOut = process.StandardError.ReadToEnd();
-				if (!String.IsNullOrEmpty(errOut))
-				{
-					LogError(errOut, true);
-				}
-				else if (!String.IsNullOrEmpty(output))
-				{
-					LogError(output, true);
-				}
-				return "";
+				LogError(errOut, true);
 			}
+			else if (!String.IsNullOrEmpty(output))
+			{
+				LogError(output, true);
+			}
+			return "";
 		}
 		
 		if (!JsonObject.TryParse(output, out var SDKInfo))
