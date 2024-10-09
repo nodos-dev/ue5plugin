@@ -846,8 +846,11 @@ void FNOSSceneTreeManager::OnLevelRemovedFromWorld(ULevel* Level, UWorld* World)
 
 	for (auto Actor : Level->Actors)
 	{
-		LOGF("%s is removed becasue level is removed", *(Actor->GetFName().ToString()));
-		OnActorDestroyed(Actor);
+		if (IsValid(Actor))
+		{
+			LOGF("%s is removed becasue level is removed", *(Actor->GetFName().ToString()));
+			OnActorDestroyed(Actor);
+		}
 	}
 }
 
