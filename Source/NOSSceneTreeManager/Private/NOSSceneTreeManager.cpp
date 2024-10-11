@@ -209,6 +209,7 @@ void FNOSSceneTreeManager::StartupModule()
 	NOSPropertyManager.NOSClient = NOSClient;
 
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FNOSSceneTreeManager::Tick));
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FNOSSceneTreeManager::CheckNewLevels), .5f);
 	NOSActorManager = new FNOSActorManager(this, SceneTree, NOSPropertyManager);
 	//Bind to Nodos events
 	NOSClient->OnNOSNodeSelected.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeSelected);
@@ -395,7 +396,6 @@ void FNOSSceneTreeManager::ShutdownModule()
 
 bool FNOSSceneTreeManager::Tick(float dt)
 {
-
 	if (bTwoWayBindingEnabled && !bTwoWayBindingStatusSent)
 	{
 		nos::fb::TNodeStatusMessage TwoWayBindingStatus;
@@ -409,7 +409,26 @@ bool FNOSSceneTreeManager::Tick(float dt)
 		NOSClient->UENodeStatusHandler.Remove("two_way_binding_status");
 		bTwoWayBindingStatusSent = false;
 	}
+	return true;
+}
 
+bool FNOSSceneTreeManager::CheckNewLevels(float dt)
+{
+	auto& streamingLevels = FNOSSceneTreeManager::daWorld->GetStreamingLevels();
+	for (auto* level : streamingLevels)
+	{
+		auto loadedLevel = level->GetLoadedLevel();
+		if (!loadedLevel)
+		{
+			AlreadyLoadedStreamingLevels.Remove(loadedLevel);
+			continue;
+		}
+		if (!AlreadyLoadedStreamingLevels.Contains(loadedLevel))
+		{
+			OnLevelAddedToWorld(loadedLevel, nullptr);
+			AlreadyLoadedStreamingLevels.Add(loadedLevel);
+		}
+	}
 	return true;
 }
 
@@ -790,7 +809,7 @@ void FNOSSceneTreeManager::OnPostWorldInit(UWorld* World, const UWorld::Initiali
 	FOnActorDestroyed::FDelegate ActorDestroyedDelegate = FOnActorDestroyed::FDelegate::CreateRaw(this, &FNOSSceneTreeManager::OnActorDestroyed);
 	World->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
 	World->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
-	
+
 	if(GEditor && !GEditor->IsPlaySessionInProgress())
 	{
 		FNOSSceneTreeManager::daWorld = GEditor->GetEditorWorldContext().World();
@@ -816,22 +835,17 @@ void FNOSSceneTreeManager::OnPreWorldFinishDestroy(UWorld* World)
 #endif
 }
 
-void FNOSSceneTreeManager::OnLevelAddedToWorld(ULevel* Level, UWorld* World)
+void FNOSSceneTreeManager::OnLevelAddedToWorld(ULevel* level, UWorld*)
 {
-	if (!Level)
+	if (!level)
 	{
 		return;
 	}
 
-	for (auto Actor : Level->Actors)
+	for (auto Actor : level->Actors)
 	{
 		if (IsActorDisplayable(Actor))
 		{
-			LOGF("%s is added with new level", *(Actor->GetFName().ToString()));
-			if (SceneTree.GetNode(Actor))
-			{
-				return;
-			}
 			SendActorAddedOnUpdate(Actor);
 		}
 	}
@@ -852,6 +866,7 @@ void FNOSSceneTreeManager::OnLevelRemovedFromWorld(ULevel* Level, UWorld* World)
 			OnActorDestroyed(Actor);
 		}
 	}
+	AlreadyLoadedStreamingLevels.Remove(Level);
 }
 
 
@@ -984,12 +999,6 @@ void FNOSSceneTreeManager::OnActorSpawned(AActor* InActor)
 {
 	if (IsActorDisplayable(InActor))
 	{
-		LOGF("%s is spawned", *(InActor->GetFName().ToString()));
-		if (auto ActorNode = SceneTree.GetNode(InActor))
-		{
-
-			return;
-		}
 		SendActorAddedOnUpdate(InActor);
 	}
 }
@@ -1004,10 +1013,7 @@ void FNOSSceneTreeManager::OnActorDestroyed(AActor* InActor)
 			RegisteredFunctions.Remove(Func->Id);
 	}
 	SendActorDeletedOnUpdate(InActor);
-	ActorsToBeAdded.RemoveAll([&](TWeakObjectPtr<AActor> const& actor)
-		{
-			return actor.Get() == actor;
-		});
+	ActorsToBeAdded.Remove(InActor);
 	if (auto actorNode = SceneTree.GetNode(InActor))
 		ActorsToBeParentChanged.Remove(actorNode->Id);
 }
@@ -1091,12 +1097,11 @@ void FNOSSceneTreeManager::OnActorDetached(AActor* Actor, const AActor* ParentAc
 		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
 	}
 	else
-		ActorsToBeAdded.Add(Actor);
+		ActorsToBeAdded.AddUnique(Actor);
 }
 
 void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 {
-	
 	//NOSActorManager->ClearActors();
 	FNOSClient::NodeId = *(FGuid*)appNode.id();
 	SceneTree.Root->Id = FNOSClient::NodeId;
@@ -2440,12 +2445,18 @@ void FNOSSceneTreeManager::SendPinAdded(FGuid NodeId, TSharedPtr<NOSProperty> co
 
 void FNOSSceneTreeManager::SendActorAddedOnUpdate(AActor* actor, FString spawnTag)
 {
+	if (SceneTree.GetNode(actor))
+	{
+		return;
+	}
+
 	if (AlwaysUpdateOnActorSpawns)
 	{
 		SendActorAdded(actor, spawnTag);
 		return;
 	}
-	ActorsToBeAdded.Add(TWeakObjectPtr<AActor>(actor));
+
+	ActorsToBeAdded.AddUnique(TWeakObjectPtr<AActor>(actor));
 }
 
 void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
@@ -2480,7 +2491,6 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
 			NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
-
 		}
 	}
 	else
@@ -2509,8 +2519,6 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
 
 	}
-
-	return;
 }
 
 void FNOSSceneTreeManager::RemoveProperties(TreeNode* Node,
