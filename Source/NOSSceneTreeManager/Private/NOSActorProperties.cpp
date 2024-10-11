@@ -430,20 +430,25 @@ void NOSTrackProperty::SetProperty_InCont(void* container, void* val)
 
 std::vector<uint8> NOSCustomTransformProperty::UpdatePinValue(uint8* customContainer)
 {
-	if (ActorRef)
-	{
-		FTransform TransformData = ActorRef->GetRootComponent()->GetRelativeTransform();
-		flatbuffers::FlatBufferBuilder fb;
-		nos::fb::Transform TempTransform;
-		TempTransform.mutable_position() = nos::fb::vec3d(TransformData.GetLocation().X, TransformData.GetLocation().Y, TransformData.GetLocation().Z);
-		TempTransform.mutable_scale() = nos::fb::vec3d(TransformData.GetScale3D().X, TransformData.GetScale3D().Y, TransformData.GetScale3D().Z);
-		TempTransform.mutable_rotation() = nos::fb::vec3d(TransformData.GetRotation().Rotator().Roll, TransformData.GetRotation().Rotator().Pitch, TransformData.GetRotation().Rotator().Yaw);
-		
-		nos::Buffer buffer = nos::Buffer::From(TempTransform);
-		data = buffer;
-	}
-	return data;
+	if (!ActorRef)
+		return data;
 
+	auto rootComponent = ActorRef->GetRootComponent();
+
+	if (!rootComponent)
+		return data;
+
+	FTransform TransformData = rootComponent->GetRelativeTransform();
+	flatbuffers::FlatBufferBuilder fb;
+	nos::fb::Transform TempTransform;
+	TempTransform.mutable_position() = nos::fb::vec3d(TransformData.GetLocation().X, TransformData.GetLocation().Y, TransformData.GetLocation().Z);
+	TempTransform.mutable_scale() = nos::fb::vec3d(TransformData.GetScale3D().X, TransformData.GetScale3D().Y, TransformData.GetScale3D().Z);
+	TempTransform.mutable_rotation() = nos::fb::vec3d(TransformData.GetRotation().Rotator().Roll, TransformData.GetRotation().Rotator().Pitch, TransformData.GetRotation().Rotator().Yaw);
+		
+	nos::Buffer buffer = nos::Buffer::From(TempTransform);
+	data = buffer;
+
+	return data;
 }
 
 void NOSCustomTransformProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
