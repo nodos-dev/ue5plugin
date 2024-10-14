@@ -24,6 +24,6 @@ public:
 
 private:
 
-	bool UpdateFeature(bool register, AActor* actor, USceneComponent* component, FProperty* property, FString featureName, uint32_t count = 0, FString message = "", uint64_t buildTime = 0);
+	bool UpdateFeature(bool registerFeature, AActor* actor, USceneComponent* component, FProperty* property, FString featureName, uint32_t count = 0, FString message = "", uint64_t buildTime = 0);
 	
 };

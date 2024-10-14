@@ -120,7 +120,7 @@ class FNOSClient;
 class NOSCLIENT_API NOSEventDelegates : public nos::app::IEventDelegates
 {
 public:
-	~NOSEventDelegates() {}
+	virtual ~NOSEventDelegates() {}
 
 	virtual void OnAppConnected(nos::fb::Node const* appNode) override;
 	virtual void OnNodeUpdated(nos::fb::Node const& appNode) override;

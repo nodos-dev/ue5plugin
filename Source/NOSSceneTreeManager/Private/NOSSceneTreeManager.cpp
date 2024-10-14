@@ -196,7 +196,7 @@ void FNOSSceneTreeManager::StartupModule()
 	auto hwinfo = FHardwareInfo::GetHardwareInfo(NAME_RHI);
 	if ("D3D12" != hwinfo)
 	{
-		FMessageDialog::Debugf(FText::FromString("Nodos plugin supports DirectX12 only!"), 0);
+		FMessageDialog::Debugf(FText::FromString("Nodos plugin supports DirectX12 only!"));
 		return;
 	}
 	

@@ -1,9 +1,6 @@
 // Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
 #include "NOSSceneTree.h"
-
-#include "Chaos/AABB.h"
-
 #include "NOSSceneTreeManager.h"
 
 NOSSceneTree::NOSSceneTree()
