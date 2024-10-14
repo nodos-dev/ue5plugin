@@ -3,13 +3,8 @@
 #include "NOSSceneTree.h"
 
 #include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
-#include "Chaos/AABB.h"
+
+#include "NOSSceneTreeManager.h"
 
 NOSSceneTree::NOSSceneTree()
 {
@@ -93,26 +88,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, 
 		ptr = FindOrAddChildFolder(ptr, item, mostRecentParent);
 	}
 
-	TSharedPtr<ActorNode> newChild(new ActorNode);
-	newChild->Parent = ptr.Get();
-	//todo fix display names newChild->Name = actor->GetActorLabel();
-	newChild->Name = actor->GetFName().ToString();
-	newChild->Id = StringToFGuid(actor->GetFName().ToString());
-	newChild->actor = NOSActorReference(actor);
-	newChild->NeedsReload = true;
-	ptr->Children.push_back(newChild);
-	NodeMap.Add(newChild->Id, newChild);
-	ActorIdToNodeId.Add(actor->GetActorGuid(), newChild->Id);
-	newChild->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
-	
-	if (actor->GetRootComponent())
-	{
-		TSharedPtr<SceneComponentNode> loadingChild(new SceneComponentNode);
-		loadingChild->Name = "Loading";
-		loadingChild->Id = FGuid::NewGuid();
-		loadingChild->Parent = newChild.Get();
-		newChild->Children.push_back(loadingChild);
-	}
+	auto newChild = AddActor(ptr->GetAsFolderNode(), actor);
 	if (!mostRecentParent)
 	{
 		mostRecentParent = newChild;
@@ -133,8 +109,18 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor)
 
 	TSharedPtr<ActorNode> newChild(new ActorNode);
 	newChild->Parent = parent;
-	newChild->Name = actor->GetActorLabel();
-	newChild->Id = StringToFGuid(actor->GetFName().ToString());
+
+	if (FNOSSceneTreeManager::daWorld->PersistentLevel == actor->GetLevel())
+	{
+		// TODO: Shouldn't this be actor->GetFName().ToString()?
+		newChild->Name = actor->GetActorLabel();
+		newChild->Id = StringToFGuid(actor->GetFName().ToString());
+	}
+	else
+	{
+		newChild->Name = actor->GetLevel()->GetOuter()->GetFName().ToString() + actor->GetFName().ToString();
+		newChild->Id = StringToFGuid(actor->GetFullName(actor->GetWorld()));
+	}
 	newChild->actor = NOSActorReference(actor);
 	newChild->NeedsReload = true;
 	parent->Children.push_back(newChild);
@@ -161,8 +147,16 @@ TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(ActorNode* parent
 	newComponentNode->sceneComponent = NOSComponentReference(sceneComponent);
 	FString ActorUniqueName = parent->actor->GetFName().ToString();
 	FString ComponentName = sceneComponent->GetFName().ToString();
-	newComponentNode->Id = StringToFGuid(ActorUniqueName + ComponentName);
 	newComponentNode->Name = sceneComponent->GetFName().ToString();
+	if (FNOSSceneTreeManager::daWorld->PersistentLevel == sceneComponent->GetComponentLevel())
+	{
+		newComponentNode->Id = StringToFGuid(ActorUniqueName + ComponentName);
+	}
+	else
+	{
+		newComponentNode->Id = StringToFGuid(sceneComponent->GetFullName(sceneComponent->GetWorld()));
+	}
+
 	newComponentNode->Parent = parent;
 	newComponentNode->NeedsReload = true;
 	parent->Children.push_back(newComponentNode);
@@ -182,14 +176,21 @@ TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(TSharedPtr<SceneC
 	TSharedPtr<SceneComponentNode> newComponentNode(new SceneComponentNode);
 	newComponentNode->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
 	newComponentNode->sceneComponent = NOSComponentReference(sceneComponent);
-	FString ActorUniqueName;
-	if(auto actor = sceneComponent->GetAttachParentActor())
-	{
-		ActorUniqueName = actor->GetFName().ToString();
-	}
-	FString ComponentName = sceneComponent->GetFName().ToString();
-	newComponentNode->Id = StringToFGuid(ActorUniqueName + ComponentName);
 	newComponentNode->Name = sceneComponent->GetFName().ToString();
+	if (FNOSSceneTreeManager::daWorld->PersistentLevel == sceneComponent->GetComponentLevel())
+	{
+		FString ActorUniqueName;
+		if(auto actor = sceneComponent->GetAttachParentActor())
+		{
+			ActorUniqueName = actor->GetFName().ToString();
+		}
+		FString ComponentName = sceneComponent->GetFName().ToString();
+		newComponentNode->Id = StringToFGuid(ActorUniqueName + ComponentName);
+	}
+	else
+	{
+		newComponentNode->Id = StringToFGuid(sceneComponent->GetFullName(sceneComponent->GetWorld()));
+	}
 	newComponentNode->Parent = parent.Get();
 	newComponentNode->NeedsReload = true;
 	parent->Children.push_back(newComponentNode);
