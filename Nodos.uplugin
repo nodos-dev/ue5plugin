@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.1.1",
+	"VersionName": "1.2.0",
 	"FriendlyName": "Nodos Link",
 	"Description": "This plugin links Unreal Engine process with Nodos process and enables runtime type reflection of UObject data types and cross-process communication to control actor properties and call their functions. It also enables cross-process GPU-only synchronized Texture-Sharing between Nodos Vulkan and Unreal DX12 contexts.",
 	"Category": "media",
