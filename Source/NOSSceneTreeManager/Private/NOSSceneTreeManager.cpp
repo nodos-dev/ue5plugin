@@ -1507,75 +1507,80 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 					auto func = RegisteredFunctions.FindRef(update.FunctionId);
 					for (auto& prop : func->Properties)
 					{
+
 						bool match = false;
 						
 						if(!prop->Property)
 						{
+							// TODO: Checking with metadata should be enough by itself
 							if (prop->DisplayName == update.FunctionPropertyName)
 								match = true;
+							else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
+								propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
+								match = true;
 						}
-						if (prop->Property && prop->Property->GetFName().ToString() == update.FunctionPropertyName)
-						{
-							match = true;	
-						}
-
-						if (match)
-						{ 
-
-							PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id, nos::fb::CreateOrphanStateDirect(fb2, false)));
-							auto NosProperty = prop;
-							NOSPortal NewPortal{update.pinId ,NosProperty->Id};
-							NewPortal.DisplayName = FString("");
-							UObject* parent = NosProperty->GetRawObjectContainer();
-							FString parentName = "";
-							FString parentUniqueName = "";
-							AActor* parentAsActor = nullptr;
-							while (parent)
+						else
+							if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
 							{
-								parentName = parent->GetFName().ToString();
-								parentUniqueName = parent->GetFName().ToString() + "-";
-								if (auto actor = Cast<AActor>(parent))
-								{
-									parentName = actor->GetActorLabel();
-									parentAsActor = actor;
-								}
-								if(auto component = Cast<USceneComponent>(parent))
-									parentName = component->GetName();
-								parentName += ".";
-								parent = parent->GetTypedOuter<AActor>();
+								match = true;
 							}
-							if (parentAsActor)
+
+						if (!match)
+							continue;
+
+						PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id, nos::fb::CreateOrphanStateDirect(fb2, false)));
+						auto NosProperty = prop;
+						NOSPortal NewPortal{update.pinId ,NosProperty->Id};
+						NewPortal.DisplayName = FString("");
+						UObject* parent = NosProperty->GetRawObjectContainer();
+						FString parentName = "";
+						FString parentUniqueName = "";
+						AActor* parentAsActor = nullptr;
+						while (parent)
+						{
+							parentName = parent->GetFName().ToString();
+							parentUniqueName = parent->GetFName().ToString() + "-";
+							if (auto actor = Cast<AActor>(parent))
 							{
-								while (parentAsActor->GetSceneOutlinerParent())
+								parentName = actor->GetActorLabel();
+								parentAsActor = actor;
+							}
+							if(auto component = Cast<USceneComponent>(parent))
+								parentName = component->GetName();
+							parentName += ".";
+							parent = parent->GetTypedOuter<AActor>();
+						}
+						if (parentAsActor)
+						{
+							while (parentAsActor->GetSceneOutlinerParent())
+							{
+								parentAsActor = parentAsActor->GetSceneOutlinerParent();
+								if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
 								{
-									parentAsActor = parentAsActor->GetSceneOutlinerParent();
-									if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
+									if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
 									{
-										if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
+										if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
 										{
-											if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
-											{
-												break;
-											}
+											break;
 										}
 									}
-									parentName = parentAsActor->GetActorLabel() + "." + parentName;
-									parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
 								}
+								parentName = parentAsActor->GetActorLabel() + "." + parentName;
+								parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
 							}
-
-							NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
-							NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
-							NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
-							NewPortal.CategoryName = NosProperty->CategoryName;
-							NewPortal.ShowAs = update.pinShowAs;
-
-							NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
-							NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
-							NewPortals.push_back(NewPortal);
-							NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-							NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 						}
+
+						NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
+						NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
+						NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
+						NewPortal.CategoryName = NosProperty->CategoryName;
+						NewPortal.ShowAs = update.pinShowAs;
+
+						NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
+						NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
+						NewPortals.push_back(NewPortal);
+						NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
+						NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 					}
 				}
 				continue;
@@ -2939,10 +2944,20 @@ void FNOSSceneTreeManager::HandleWorldChange()
 
 			}
 		}
+		else if (NOSPropertyManager.PropertiesById.Contains(portal.SourceId))
+		{
+			if (auto propertyPin = NOSPropertyManager.PropertiesById.FindRef(portal.SourceId))
+			{propertyPin->PinShowAs = portal.ShowAs;
+				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(propertyPin.Get(), propertyPin->PinShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)propertyPin->Id, propertyPin->PinShowAs);
+				NOSPropertyManager.PropertyToPortalPin.Add(propertyPin->Id, portal.Id);
+				PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&propertyPin->Id, nos::fb::CreateOrphanStateDirect(mbb, false, "Object not found in the world")));
+			}
+		}
+		// TODO: This if might be covered by the previous one already
 		else if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({containerInfo.Property,UnknownContainer}))
 		{
 			auto NosProperty = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({containerInfo.Property,UnknownContainer});
-			bool notOrphan = false;
 			if (NOSPropertyManager.PortalPinsById.Contains(portal.Id))
 			{
 				auto pPortal = NOSPropertyManager.PortalPinsById.Find(portal.Id);
@@ -2953,13 +2968,12 @@ void FNOSSceneTreeManager::HandleWorldChange()
 			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
 			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, NosProperty->PinShowAs);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, portal.Id);
-			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreateOrphanStateDirect(mbb, notOrphan, notOrphan ? "" : "Object not found in the world")));
+			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreateOrphanStateDirect(mbb, false, "Object not found in the world")));
 		}
 		else
 		{
 			PinsToRemove.push_back(*(nos::fb::UUID*)&portal.Id);
 		}
-
 	}
 	
 	if (!PinUpdates.empty())
