@@ -62,7 +62,7 @@ FString FNodos::GetNodosSDKDir()
 	{
 		return "";
 	}
-	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 17.0.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
+	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 17.1.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
 	LOGF("Nodos SDK path is %s", *OutResults);
 
 	TSharedPtr<FJsonObject> SDKInfoJsonParsed;
@@ -877,7 +877,7 @@ bool FNOSClient::ExecInternal(const TCHAR* Input)
 	bool bWasHandled = false;
 	UWorld* World = nullptr;
 	UWorld* OldWorld = nullptr;
-	NOSConsoleOutput ConsoleOutput(this);
+	NOSConsoleOutput ConsoleOutput(this, Input);
 
 	// The play world needs to handle these commands if it exists
 	if (GIsEditor && GEditor->PlayWorld && !GIsPlayInEditorWorld)

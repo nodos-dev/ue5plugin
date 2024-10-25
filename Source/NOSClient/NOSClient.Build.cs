@@ -61,7 +61,7 @@ public class NOSClient : ModuleRules
 		System.Diagnostics.Process process = new System.Diagnostics.Process();
 		process.StartInfo.FileName = NosmanPath;
 		process.StartInfo.ArgumentList.Add("sdk-info");
-		process.StartInfo.ArgumentList.Add("17.0.0");
+		process.StartInfo.ArgumentList.Add("17.1.0");
 		process.StartInfo.ArgumentList.Add("process");
 		process.StartInfo.UseShellExecute = false;
 		process.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
