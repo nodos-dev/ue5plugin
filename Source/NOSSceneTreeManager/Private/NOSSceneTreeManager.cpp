@@ -454,7 +454,8 @@ void FNOSSceneTreeManager::OnNOSConnected(nos::fb::Node const* appNode)
 		flatbuffers::FlatBufferBuilder fb1;
 		for (auto pin : *appNode->pins())
 		{
-			PinUpdates.push_back(nos::CreatePartialPinUpdate(fb1, pin->id(), 0, nos::fb::CreateOrphanStateDirect(fb1, true, "Binding in progress")));
+			PinUpdates.push_back(nos::CreatePartialPinUpdate(fb1, pin->id(), 0,
+				nos::fb::CreatePinOrphanStateDirect(fb1, nos::fb::PinOrphanStateType::ORPHAN, "Binding in progress")));
 		}
 		auto offset = nos::CreatePartialNodeUpdateDirect(fb1, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, 0, 0, 0, 0, 0, 0, &PinUpdates);
 		fb1.Finish(offset);
@@ -1123,7 +1124,8 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 	{
 		for (auto pin : *node->pins())
 		{
-			PinUpdates.push_back(nos::CreatePartialPinUpdate(fb1, pin->id(), 0, nos::fb::CreateOrphanStateDirect(fb1, true, "Object not found in the scene")));
+			PinUpdates.push_back(nos::CreatePartialPinUpdate(fb1, pin->id(), 0, 
+				nos::fb::CreatePinOrphanStateDirect(fb1, nos::fb::PinOrphanStateType::ORPHAN, "Object not found in the scene")));
 		}
 	}
 	auto offset = nos::CreatePartialNodeUpdateDirect(fb1, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, 0, 0, 0, 0, 0, 0, &PinUpdates);
@@ -1439,7 +1441,8 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 						if (!match)
 							continue;
 
-						PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id, nos::fb::CreateOrphanStateDirect(fb2, false)));
+						PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id,
+							nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
 						auto NosProperty = prop;
 						NOSPortal NewPortal{update.pinId ,NosProperty->Id};
 						NewPortal.DisplayName = FString("");
@@ -1525,7 +1528,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyToUpdate, UnknownContainer}))
 			{
 				auto NosProperty = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyToUpdate, UnknownContainer});
-				PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreateOrphanStateDirect(fb2, false)));
+				PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
 				NOSPortal NewPortal{update.pinId ,NosProperty->Id};
 				
 				NewPortal.DisplayName = FString("");
@@ -2752,7 +2755,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		
 		Portals.Add({ContainerInfo, portal});
 		graphPins.push_back(*(nos::fb::UUID*)&portal.Id);
-		PinUpdates.push_back(nos::CreatePartialPinUpdate(mb, (nos::fb::UUID*)&portal.Id, 0, nos::fb::CreateOrphanStateDirect(mb, true, "Object not found in the world")));
+		PinUpdates.push_back(nos::CreatePartialPinUpdate(mb, (nos::fb::UUID*)&portal.Id, 0, nos::fb::CreatePinOrphanStateDirect(mb, nos::fb::PinOrphanStateType::ORPHAN, "Object not found in the world")));
 	}
 
 	if (!NOSClient->IsConnected())
@@ -2811,7 +2814,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
 			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, NosProperty->PinShowAs);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, portal.Id);
-			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreateOrphanStateDirect(mbb, false, "Object not found in the world")));
+			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(mbb, nos::fb::PinOrphanStateType::ACTIVE, "Object not found in the world")));
 		}
 		else
 		{
