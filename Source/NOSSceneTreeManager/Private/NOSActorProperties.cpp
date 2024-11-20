@@ -15,13 +15,13 @@
 
 struct Bounds
 {
-	std::vector<u8> def, min, max;
+	std::vector<uint8_t> def, min, max;
 	template<class T>
 	Bounds(T def, T min, T max)
 	{
-		this->def = std::vector<u8>{ (u8*)&def, (u8*)&def + sizeof(T) };
-		this->min = std::vector<u8>{ (u8*)&min, (u8*)&min + sizeof(T) };
-		this->max = std::vector<u8>{ (u8*)&max, (u8*)&max + sizeof(T) };
+		this->def = std::vector<uint8_t>{ (uint8_t*)&def, (uint8_t*)&def + sizeof(T) };
+		this->min = std::vector<uint8_t>{ (uint8_t*)&min, (uint8_t*)&min + sizeof(T) };
+		this->max = std::vector<uint8_t>{ (uint8_t*)&max, (uint8_t*)&max + sizeof(T) };
 	}
 };
 
@@ -595,7 +595,7 @@ bool NOSColorProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScript
 
 void NOSColorProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	auto vec = (flatbuffers::Vector<u8>*)val; 
+	auto vec = (flatbuffers::Vector<uint8_t>*)val; 
 	int ct = vec->size();
 	ArrayHelper.Resize(ct);
 	for(int i = 0; i < ct; i++)
@@ -857,7 +857,7 @@ std::vector<uint8> NOSArrayProperty::UpdatePinValue(uint8* customContainer)
 		if(nosprop->CreateFbArray(fb, ArrayHelper))
 		{
 			auto buf = fb.Release();
-			data = std::vector<uint8_t>{flatbuffers::GetMutableRoot<u8>(buf.data()), buf.data()+buf.size()};
+			data = std::vector<uint8_t>{flatbuffers::GetMutableRoot<uint8_t>(buf.data()), buf.data()+buf.size()};
 		}
 	}
 	return data;

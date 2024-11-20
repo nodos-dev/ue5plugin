@@ -196,7 +196,7 @@ bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sy
 	Texture.usage = nos::sys::vulkan::ImageUsage(info.Usage) | nos::sys::vulkan::ImageUsage::SAMPLED;
 	auto& Ext = Texture.external_memory;
 	Ext.mutate_handle_type(NOS_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE);
-	Ext.mutate_handle((u64)handle);
+	Ext.mutate_handle((uint64_t)handle);
 	D3D12_RESOURCE_DESC desc = DXResource->GetDesc();
 	Ext.mutate_allocation_size(Dev->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes);
 	Ext.mutate_pid(FPlatformProcess::GetCurrentProcessId());
@@ -344,7 +344,7 @@ void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, ResourceInfo>
 }
 
 void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs,
-	TMap<ID3D12Fence*, u64>& SignalGroup, uint64_t frameNumber)
+	TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber)
 {
 	if(ExecutionState == nos::app::ExecutionState::SYNCED)
 	{
@@ -466,7 +466,7 @@ bool NOSTextureShareManager::SwitchStateToSynced()
 	return true;
 }
 
-void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(u64 LastFrameNumber)
+void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber)
 {
 	FScopeLock Lock(&CriticalSectionState);
 	ExecutionState = nos::app::ExecutionState::IDLE;

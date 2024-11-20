@@ -86,12 +86,12 @@ public:
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
-	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, u64>& SignalGroup, uint64_t frameNumber);
+	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
 	void ProcessCopies(nos::fb::ShowAs, TMap<NOSProperty*, ResourceInfo>& CopyMap);
 	void OnBeginFrame();
 	void OnEndFrame();
 	bool SwitchStateToSynced();
-	void SwitchStateToIdle_GRPCThread(u64 LastFrameNumber);
+	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
 
 	class FNOSClient* NOSClient;
 	

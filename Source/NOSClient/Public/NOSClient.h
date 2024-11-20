@@ -58,7 +58,7 @@ private:
 	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait)
 	{
 		std::scoped_lock lock(Guard);
-		u32 tryCount = 0;
+		uint32_t tryCount = 0;
 		bool dequeued = false;
 		bool oldLiveNow = LiveNow;
 		FPlatformProcess::ConditionalSleep([&]()
