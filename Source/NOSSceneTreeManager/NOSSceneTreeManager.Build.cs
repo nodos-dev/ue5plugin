@@ -18,19 +18,22 @@ public class NOSSceneTreeManager : ModuleRules
 			{
 				CppStandard = CppStandardVersion.Cpp20;
 
-				string SDKdir = NOSClient.GetSDKDir(Target.RelativeEnginePath);
-
-				if (String.IsNullOrEmpty(SDKdir))
+				NosIncludeDirs? dirs = NOSClient.GetSDKDir(Target.RelativeEnginePath);
+				if (dirs == null || String.IsNullOrEmpty(dirs?.NodosSDKDir) || string.IsNullOrEmpty(dirs?.VulkanSubsystemIncludeDir))
 				{
 					string errorMessage = "Please update NODOS_SDK_DIR environment variable";
 					System.Console.WriteLine(errorMessage);
 					throw new BuildException(errorMessage);
 				}
 
-				var SDKIncludeDir = Path.Combine(SDKdir, "include");
+				var SDKIncludeDir = Path.Combine(dirs?.NodosSDKDir, "include");
 
 				PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
 				PublicIncludePaths.Add(SDKIncludeDir);
+				PublicIncludePaths.Add(dirs?.VulkanSubsystemIncludeDir);
+
+				//System.Console.WriteLine("Using Nodos SDK in " + dirs?.NodosSDKDir);
+				//System.Console.WriteLine("Using nos.sys.vulkan headers from " + dirs?.VulkanSubsystemIncludeDir);
 
 				PublicIncludePathModuleNames.Add("NOSDataStructures");
 

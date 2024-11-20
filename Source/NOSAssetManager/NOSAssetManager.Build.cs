@@ -19,20 +19,20 @@ public class NOSAssetManager : ModuleRules
 			{
 				CppStandard = CppStandardVersion.Cpp20;
 
-				string SDKdir = NOSClient.GetSDKDir(Target.RelativeEnginePath);
+				NosIncludeDirs? dirs = NOSClient.GetSDKDir(Target.RelativeEnginePath);
 
-				if (String.IsNullOrEmpty(SDKdir))
+				if (dirs == null || String.IsNullOrEmpty(dirs?.NodosSDKDir) || String.IsNullOrEmpty(dirs?.VulkanSubsystemIncludeDir))
 				{
 					string errorMessage = "Please update NODOS_SDK_DIR environment variable";
 					System.Console.WriteLine(errorMessage);
 					throw new BuildException(errorMessage);
 				}
 
-				var SDKIncludeDir = Path.Combine(SDKdir, "include");
+				var SDKIncludeDir = Path.Combine(dirs?.NodosSDKDir, "include");
 
 				PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
 				PublicIncludePaths.Add(SDKIncludeDir);
-				
+				PublicIncludePaths.Add(dirs?.VulkanSubsystemIncludeDir);
 
 				PublicDependencyModuleNames.AddRange(
 					new string[]
