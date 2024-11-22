@@ -81,8 +81,6 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		static const FName NAME_Category(TEXT("Category"));
 		static const FName NAME_UIMin(TEXT("UIMin"));
 		static const FName NAME_UIMax(TEXT("UIMax"));
-		static const FName NAME_ClampMin(TEXT("ClampMin"));
-		static const FName NAME_ClampMax(TEXT("ClampMax"));
 		static const FName NAME_EditCondition(TEXT("editcondition"));
 		static const FName NAME_HiddenByDefault(TEXT("PinHiddenByDefault"));
 		static const FName NAME_ToolTip(TEXT("ToolTip"));
@@ -94,8 +92,6 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		CategoryName = (metaData.Contains(NAME_Category) ? metaData[NAME_Category] : "Default");
 		UIMinString = metaData.Contains(NAME_UIMin) ? metaData[NAME_UIMin] : "";
 		UIMaxString = metaData.Contains(NAME_UIMax) ? metaData[NAME_UIMax] : "";
-		ClampMinString = metaData.Contains(NAME_ClampMin) ? metaData[NAME_ClampMin] : "";
-		ClampMaxString = metaData.Contains(NAME_ClampMax) ? metaData[NAME_ClampMax] : "";
 		ToolTipText = metaData.Contains(NAME_ToolTip) ? metaData[NAME_ToolTip] : "";
 		EditConditionPropertyName = metaData.Contains(NAME_EditCondition) ? metaData[NAME_EditCondition] : "";
 		if(!EditConditionPropertyName.IsEmpty())
@@ -185,6 +181,7 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		min_val = it->second.min;
 		max_val = it->second.max;
 	}
+
 }
 
 
