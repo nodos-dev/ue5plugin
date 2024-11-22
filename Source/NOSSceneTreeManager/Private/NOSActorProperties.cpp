@@ -1262,10 +1262,11 @@ void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 		if(EnumPtr && NumericProperty)
 		{
 			FString ValueString((char*)val);
-			int64 Index = EnumPtr->GetIndexByNameString(ValueString);
-			if (Index != INDEX_NONE)
+
+			auto result = NameMap.Find(ValueString);
+			if (result != nullptr)
 			{
-				int64 Value = EnumPtr->GetValueByIndex(Index);
+				int64 Value = EnumPtr->GetValueByIndex(*result);
 				uint8* PropData = Property->ContainerPtrToValuePtr<uint8>(container);
 				NumericProperty->SetIntPropertyValue(PropData, Value);
 			}
