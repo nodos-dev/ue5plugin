@@ -138,10 +138,12 @@ void FNOSSceneTreeManager::OnEndFrame()
 	NOSTextureShareManager::GetInstance()->OnEndFrame();
 
 
+	flatbuffers::FlatBufferBuilder fb;
+	std::vector<flatbuffers::Offset<nos::app::AppExecutePinValueUpdate>> pinValueUpdates;
+	if (!NOSClient->AppServiceClient)
+		return;
 	if (bTwoWayBindingEnabled)
 	{
-		flatbuffers::FlatBufferBuilder fb;
-		std::vector<flatbuffers::Offset<nos::app::AppExecutePinValueUpdate>> pinValueUpdates;
 
 		for (auto& [id, portal] : NOSPropertyManager.PortalPinsById)
 		{
@@ -161,7 +163,7 @@ void FNOSSceneTreeManager::OnEndFrame()
 				if (val.size() != updatedVal.size() || memcmp(val.data(), updatedVal.data(), val.size()) != 0)
 				{
 					pinValueUpdates.push_back(
-								nos::app::CreateAppExecutePinValueUpdateDirect(fb, (nos::fb::UUID*)&portal.Id, &updatedVal));
+						nos::app::CreateAppExecutePinValueUpdateDirect(fb, (nos::fb::UUID*)&portal.Id, &updatedVal));
 					if (prop->Property)
 					{
 						if (auto objectContainer = prop->GetRawObjectContainer())
@@ -180,14 +182,14 @@ void FNOSSceneTreeManager::OnEndFrame()
 			}
 		}
 
-		auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
-																	NOSTextureShareManager::GetInstance()->FrameCounter, 
-																	&pinValueUpdates));
-		fb.Finish(offset);
-		auto buf = fb.Release();
-		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		NOSClient->AppServiceClient->Send(*root);
 	}
+	auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
+		NOSTextureShareManager::GetInstance()->FrameCounter,
+		&pinValueUpdates));
+	fb.Finish(offset);
+	auto buf = fb.Release();
+	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+	NOSClient->AppServiceClient->Send(*root);
 }
 
 void FNOSSceneTreeManager::StartupModule()
