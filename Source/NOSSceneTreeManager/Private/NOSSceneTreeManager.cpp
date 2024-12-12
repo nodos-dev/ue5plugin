@@ -140,7 +140,7 @@ void FNOSSceneTreeManager::OnEndFrame()
 
 	flatbuffers::FlatBufferBuilder fb;
 	std::vector<flatbuffers::Offset<nos::app::AppExecutePinValueUpdate>> pinValueUpdates;
-	if (!NOSClient->AppServiceClient)
+	if (!NOSClient->AppServiceClient || !NOSClient->AppServiceClient->IsConnected())
 		return;
 	if (bTwoWayBindingEnabled)
 	{
