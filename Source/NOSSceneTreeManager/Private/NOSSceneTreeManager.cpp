@@ -117,7 +117,6 @@ void FNOSSceneTreeManager::ChangeParentActors()
 
 void FNOSSceneTreeManager::OnBeginFrame()
 {
-
 	if(ToggleExecutionStateToSynced)
 	{
 		ToggleExecutionStateToSynced = false;
@@ -135,6 +134,7 @@ void FNOSSceneTreeManager::OnBeginFrame()
 void FNOSSceneTreeManager::OnEndFrame()
 {
 	NOSPropertyManager.OnEndFrame();
+	auto frameCount = NOSTextureShareManager::GetInstance()->FrameCounter;
 	NOSTextureShareManager::GetInstance()->OnEndFrame();
 
 
@@ -184,7 +184,7 @@ void FNOSSceneTreeManager::OnEndFrame()
 
 	}
 	auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
-		NOSTextureShareManager::GetInstance()->FrameCounter,
+		frameCount,
 		&pinValueUpdates));
 	fb.Finish(offset);
 	auto buf = fb.Release();
