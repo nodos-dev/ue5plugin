@@ -232,7 +232,9 @@ public:
 	bool ExecuteConsoleCommand(const TCHAR* Input);
 
 	bool ExecInternal(const TCHAR* Input);
-	
+
+	void TogglePlayInEditor();
+
 	//Grpc client to communicate
 	TSharedPtr<NOSEventDelegates> EventDelegates = 0;
 

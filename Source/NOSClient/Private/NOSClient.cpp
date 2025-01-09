@@ -22,6 +22,8 @@
 #include "Serialization/JsonReader.h"
 #include "Engine/GameViewportClient.h"
 #include "Modules/ModuleManager.h"
+#include "SLevelViewport.h"
+
 
 //Nodos
 #include "nosFlatBuffersCommon.h"
@@ -707,6 +709,17 @@ void FNOSClient::Initialize()
 		EditorWarningStatus.text = "WARNING: Editor Mode, Preview only!";
 		EditorWarningStatus.type = nos::fb::NodeStatusMessageType::WARNING;
 		UENodeStatusHandler.Add("editor_warning", EditorWarningStatus);
+
+		if (FParse::Param(FCommandLine::Get(), TEXT("PlayOnStartUp")))
+		{
+			if (FLevelEditorModule* LevelEditorModule = FModuleManager::Get().GetModulePtr<FLevelEditorModule>(TEXT("LevelEditor")))
+			{
+				LevelEditorModule->OnLevelEditorCreated().AddLambda([this](TSharedPtr<ILevelEditor> editor)
+					{
+						TogglePlayInEditor();
+					});
+			}
+		}
 	}
 
 	//Add Delegates
@@ -802,6 +815,14 @@ void FNOSClient::ShutdownModule()
 	}
 	AppServiceClient = nullptr;
 	FNodos::Shutdown();
+
+	if (GEditor)
+	{
+		if (FLevelEditorModule* LevelEditorModule = FModuleManager::Get().GetModulePtr<FLevelEditorModule>(TEXT("LevelEditor")))
+		{
+			LevelEditorModule->OnLevelEditorCreated().RemoveAll(this);
+		}
+	}
 	bIsInitialized = false;
 }
 
@@ -937,6 +958,34 @@ bool FNOSClient::ExecInternal(const TCHAR* Input)
 
 	return bWasHandled;
 	
+}
+
+void FNOSClient::TogglePlayInEditor()
+{
+	if (GEditor)
+	{
+		if (GEditor->PlayWorld)
+		{
+			GEditor->RequestEndPlayMap();
+		}
+		else
+		{
+			if (FLevelEditorModule* LevelEditorModule = FModuleManager::Get().GetModulePtr<FLevelEditorModule>(TEXT("LevelEditor")))
+			{
+				FRequestPlaySessionParams playSessionParams{};
+				playSessionParams.WorldType = EPlaySessionWorldType::PlayInEditor;
+				auto activeLevelViewport = LevelEditorModule->GetFirstActiveViewport();
+				playSessionParams.DestinationSlateViewport = activeLevelViewport;
+			
+				if (activeLevelViewport)
+				{
+					playSessionParams.StartLocation = activeLevelViewport->GetAssetViewportClient().GetViewLocation();
+					playSessionParams.StartRotation = activeLevelViewport->GetAssetViewportClient().GetViewRotation();
+				}
+				GEditor->RequestPlaySession(playSessionParams);
+			}
+		}
+	}
 }
 
 void UENodeStatusHandler::SetClient(FNOSClient* _PluginClient)

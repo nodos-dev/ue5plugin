@@ -390,6 +390,24 @@ void FNOSSceneTreeManager::StartupModule()
 		};
 		CustomFunctions.Add(noscf->Id, noscf);
 	}
+	if(GEditor)
+	{
+		NOSCustomFunction* noscf = new NOSCustomFunction;
+		FString UniqueFunctionName("Toggle Play In Editor");
+		noscf->Id = StringToFGuid(UniqueFunctionName);
+
+		noscf->Serialize = [funcid = noscf->Id, this](flatbuffers::FlatBufferBuilder& fbb)->flatbuffers::Offset<nos::fb::Node>
+			{
+				std::vector<uint8_t> data;
+				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Toggle Play In Editor", "UE5.UE5", false, true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
+					, 0, false, nullptr, 0, "Start/Stop play in editor.");
+			};
+		noscf->Function = [this](TMap<FGuid, std::vector<uint8>> properties)
+			{
+				NOSClient->TogglePlayInEditor();
+			};
+		CustomFunctions.Add(noscf->Id, noscf);
+	}
 
 
 	LOG("NOSSceneTreeManager module successfully loaded.");
