@@ -2616,7 +2616,7 @@ void FNOSSceneTreeManager::ReloadCurrentMap()
 	}
 	else
 #endif
-		UGameplayStatics::OpenLevel(daWorld, daWorld->GetFName());
+	UGameplayStatics::OpenLevel(daWorld, daWorld->GetFName());
 }
 
 void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId)
@@ -3070,14 +3070,16 @@ void FNOSActorManager::ClearActors()
 		if (AActor* actor = Actor.Get())
 			actor->Destroy(false, false);
 	}
-	// Clear local structures.
-	ActorIds.Reset();
-	Actors.Reset();
-	SceneTree.Clear();
 
 	// When Play starts then actors are duplicated from Editor world into newly created PIE world.
 	if (!IsValid(FNOSSceneTreeManager::daWorld))
+	{
+		// Clear local structures.
+		ActorIds.Reset();
+		Actors.Reset();
+		SceneTree.Clear();
 		return;
+	}
 
 	EWorldType::Type CurrentWorldType = FNOSSceneTreeManager::daWorld->WorldType.GetValue();
 	if (CurrentWorldType == EWorldType::PIE)
@@ -3097,6 +3099,10 @@ void FNOSActorManager::ClearActors()
 				actor->Destroy(false, false);
 		}
 	}
+	// Clear local structures.
+	ActorIds.Reset();
+	Actors.Reset();
+	SceneTree.Clear();
 }
 
 void FNOSActorManager::ReAddActorsToSceneTree()
