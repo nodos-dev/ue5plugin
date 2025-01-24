@@ -1,8 +1,13 @@
-## Nodos Link UE5 PLUGIN
+## R5 -> Nodos Link Table
+| R5 | Nodos Link |
+| ------| ---- |
+|5.5sp2|5.5nos1.3|
+|5.5sp1|5.5nos1.2|
+|5.4sp3|5.4nos1.3|
+|5.4sp2|5.4nos1.2|
+|5.4sp1p01|5.4nos1.1|
+|5.4sp1|5.4nos1.1|
+|5.3sp4|5.3nos1.2|
+|5.3sp2|5.3nos1.1|
 
-1. Make sure your graphics card drivers are up to date
-2. Download latest version of [Vulkan SDK](https://vulkan.lunarg.com/sdk)
-3. Install Unreal Engine 5.3, download [Reality Engine 5.3](https://github.com/zerodensity/R5/) if you want to use Reality specific-features. 
-4. Install latest version of [Nodos Link for Unreal Engine 5.3](https://github.com/zerodensity/R5/releases)
-6. Install latest version of [Nodos](https://github.com/zerodensity/test/releases)
-7. Launch an Unreal Engine project and Nodos editor to see the Unreal Engine node on the Nodos editor.
+Nodos Link's nosX.Y branch means Nodos' X.Y version is compatible with the branch
