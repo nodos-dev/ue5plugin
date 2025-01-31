@@ -335,6 +335,7 @@ public:
 	nos::app::ExecutionState ExecutionState = nos::app::ExecutionState::IDLE;
 
 	bool ToggleExecutionStateToSynced = false;
+	bool ShowHiddenActorsOnNodos = false;
 
 	bool AlwaysUpdateOnActorSpawns = false;
 	TArray<TWeakObjectPtr<AActor>> ActorsToBeAdded;
