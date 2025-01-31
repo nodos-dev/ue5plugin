@@ -289,23 +289,33 @@ void FNOSSceneTreeManager::StartupModule()
 		FString AlwaysUpdatePinName("Always Update Scene Outliner");
 		FGuid alwaysUpdateId = StringToFGuid(UniqueFunctionName + AlwaysUpdatePinName);
 		noscf->Params.Add(alwaysUpdateId, "Always Update Scene Outliner");
-		noscf->Serialize = [funcid = noscf->Id, alwaysUpdateId, this](flatbuffers::FlatBufferBuilder& fbb)->flatbuffers::Offset<nos::fb::Node>
+		FString ShowHiddenActorPinName("Show Hidden Actors");
+		FGuid showHiddenActorsId = StringToFGuid(UniqueFunctionName + ShowHiddenActorPinName);
+		noscf->Params.Add(showHiddenActorsId, "Show Hidden Actors");
+		noscf->Serialize = [funcid = noscf->Id, alwaysUpdateId, showHiddenActorsId, this](flatbuffers::FlatBufferBuilder& fbb)->flatbuffers::Offset<nos::fb::Node>
 			{
-				std::vector<uint8_t> data;
-				data.push_back(AlwaysUpdateOnActorSpawns ? 1 : 0);
+				std::vector<uint8_t> alwaysUpdateOnActorSpawnData;
+				alwaysUpdateOnActorSpawnData.push_back(AlwaysUpdateOnActorSpawns ? 1 : 0);
+				std::vector<uint8_t> showHiddenActorsData;
+				showHiddenActorsData.push_back(ShowHiddenActorsOnNodos ? 1 : 0);
 				std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&alwaysUpdateId, TCHAR_TO_ANSI(TEXT("Always Update Scene Outliner")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", 0, &data, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&alwaysUpdateId, TCHAR_TO_ANSI(TEXT("Always Update Scene Outliner")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", 0, &alwaysUpdateOnActorSpawnData, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 					"Update scene outliner when an actor is spawned instead of waiting for refreshing.\nDecreases performance for dynamic scenes."),
+					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&showHiddenActorsId, TCHAR_TO_ANSI(TEXT("Show Hidden Actors")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", 0, &showHiddenActorsData, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+					"Show hidden Unreal actors on Nodos Scene Outliner")
 				};
 				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Refresh Scene Outliner", "UE5.UE5", false, true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
 				, 0, false, nullptr, 0, "Add actors spawned since last refresh to the scene outliner.");
 			};
-		noscf->Function = [this, alwaysUpdateId = alwaysUpdateId](TMap<FGuid, std::vector<uint8>> properties)
+		noscf->Function = [this, alwaysUpdateId = alwaysUpdateId, showHiddenActorsId = showHiddenActorsId](TMap<FGuid, std::vector<uint8>> properties)
 			{
+				ShowHiddenActorsOnNodos = static_cast<bool>(properties[showHiddenActorsId][0]);
+				RescanScene(false);
 				DeleteToBeDeletedActors();
 				AddToBeAddedActors();
 				ChangeParentActors();
 				AlwaysUpdateOnActorSpawns = static_cast<bool>(properties[alwaysUpdateId][0]);
+				SendNodeUpdate(FNOSClient::NodeId, false);
 			};
 		CustomFunctions.Add(noscf->Id, noscf);
 	}
@@ -574,20 +584,25 @@ void FNOSSceneTreeManager::LoadNodesOnPath(FString NodePath)
 	}
 }
 
-bool IsActorDisplayable(const AActor* Actor)
-{
+bool FilterNonSceneOutlinerActor(const AActor* Actor) {
 	static const FName SequencerActorTag(TEXT("SequencerActor"));
+
+	return Actor->IsListedInSceneOutliner() &&
+		Actor->IsEditable() &&
+		(((Actor->GetWorld() && Actor->GetWorld()->IsPlayInEditor()) || !Actor->HasAnyFlags(RF_Transient)) ||
+			(Actor->ActorHasTag(SequencerActorTag)));
+}
+
+bool IsActorDisplayable(const AActor* Actor, bool FilterNonSceneOutliner)
+{
 
 	if(Actor == nullptr)
 	{
 		return false;
 	}
 
-	return Actor &&
-		Actor->IsEditable() &&																	// Only show actors that are allowed to be selected and drawn in editor
-		Actor->IsListedInSceneOutliner() &&
-		(((Actor->GetWorld() && Actor->GetWorld()->IsPlayInEditor()) || !Actor->HasAnyFlags(RF_Transient)) ||
-			(Actor->ActorHasTag(SequencerActorTag))) &&
+	return Actor  &&																	// Only show actors that are allowed to be selected and drawn in editor
+		(!FilterNonSceneOutliner ? FilterNonSceneOutlinerActor(Actor) : true) &&
 		!Actor->IsTemplate() &&																	// Should never happen, but we never want CDOs displayed
 		!Actor->IsA(AWorldSettings::StaticClass()) &&											// Don't show the WorldSettings actor, even though it is technically editable
 		IsValidChecked(Actor);// &&																// We don't want to show actors that are about to go away
@@ -872,7 +887,7 @@ void FNOSSceneTreeManager::OnLevelAddedToWorld(ULevel* level, UWorld*)
 
 	for (auto Actor : level->Actors)
 	{
-		if (IsActorDisplayable(Actor))
+		if (IsActorDisplayable(Actor, ShowHiddenActorsOnNodos))
 		{
 			SendActorAddedOnUpdate(Actor);
 		}
@@ -1024,7 +1039,7 @@ void GetNodesWithProperty(const nos::fb::Node* node, std::vector<const nos::fb::
 
 void FNOSSceneTreeManager::OnActorSpawned(AActor* InActor)
 {
-	if (IsActorDisplayable(InActor))
+	if (IsActorDisplayable(InActor, ShowHiddenActorsOnNodos))
 	{
 		SendActorAddedOnUpdate(InActor);
 	}
@@ -1710,7 +1725,7 @@ void FNOSSceneTreeManager::RescanScene(bool reset)
 	TArray<AActor*> ActorsInScene;
 	for (TActorIterator< AActor > ActorItr(daWorld); ActorItr; ++ActorItr)
 	{
-		if (!IsActorDisplayable(*ActorItr))
+		if (!IsActorDisplayable(*ActorItr, ShowHiddenActorsOnNodos))
 			continue;
 
 		if (ActorItr->GetSceneOutlinerParent())
