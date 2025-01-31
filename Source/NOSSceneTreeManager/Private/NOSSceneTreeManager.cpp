@@ -309,13 +309,19 @@ void FNOSSceneTreeManager::StartupModule()
 			};
 		noscf->Function = [this, alwaysUpdateId = alwaysUpdateId, showHiddenActorsId = showHiddenActorsId](TMap<FGuid, std::vector<uint8>> properties)
 			{
-				ShowHiddenActorsOnNodos = static_cast<bool>(properties[showHiddenActorsId][0]);
-				RescanScene(false);
+				bool showHiddenActorsOnNodos = static_cast<bool>(properties[showHiddenActorsId][0]);
+				bool shouldRescan = showHiddenActorsOnNodos != ShowHiddenActorsOnNodos;
+				if (shouldRescan)
+				{
+					ShowHiddenActorsOnNodos = showHiddenActorsOnNodos;
+					RescanScene(!ShowHiddenActorsOnNodos);
+				}
 				DeleteToBeDeletedActors();
 				AddToBeAddedActors();
 				ChangeParentActors();
 				AlwaysUpdateOnActorSpawns = static_cast<bool>(properties[alwaysUpdateId][0]);
-				SendNodeUpdate(FNOSClient::NodeId, false);
+				if(shouldRescan)
+					SendNodeUpdate(FNOSClient::NodeId, false);
 			};
 		CustomFunctions.Add(noscf->Id, noscf);
 	}
