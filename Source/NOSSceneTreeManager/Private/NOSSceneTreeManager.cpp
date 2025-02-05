@@ -3262,16 +3262,16 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 	AActor* parentAsActor = nullptr;
 	while (parent)
 	{
-		parentName = parent->GetFName().ToString();
-		parentUniqueName = parent->GetFName().ToString() + "-";
+		FString tmpName = parent->GetFName().ToString();
+		parentUniqueName = parent->GetFName().ToString() + "-" + parentUniqueName;
 		if (auto actor = Cast<AActor>(parent))
 		{
-			parentName = actor->GetActorLabel();
+			tmpName = actor->GetActorLabel();
 			parentAsActor = actor;
 		}
 		if(auto component = Cast<USceneComponent>(parent))
-			parentName = component->GetName();
-		parentName += ".";
+			tmpName = component->GetName();
+		parentName = tmpName + "." + parentName;
 		parent = parent->GetTypedOuter<AActor>();
 	}
 	if (parentAsActor)
