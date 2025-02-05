@@ -75,7 +75,7 @@ public class NOSClient : ModuleRules
 			System.Diagnostics.Process process = new System.Diagnostics.Process();
 			process.StartInfo.FileName = NosmanPath;
 			process.StartInfo.ArgumentList.Add("sdk-info");
-			process.StartInfo.ArgumentList.Add("17.1.0");
+			process.StartInfo.ArgumentList.Add("17.4.0");
 			process.StartInfo.ArgumentList.Add("process");
 			process.StartInfo.UseShellExecute = false;
 			process.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
@@ -125,7 +125,7 @@ public class NOSClient : ModuleRules
 			installProc.StartInfo.FileName = NosmanPath;
 			installProc.StartInfo.ArgumentList.Add("install");
 			installProc.StartInfo.ArgumentList.Add("nos.sys.vulkan");
-			installProc.StartInfo.ArgumentList.Add("5.9");
+			installProc.StartInfo.ArgumentList.Add("5.25");
 			installProc.StartInfo.UseShellExecute = false;
 			installProc.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
 			installProc.StartInfo.RedirectStandardOutput = true;
@@ -156,7 +156,7 @@ public class NOSClient : ModuleRules
 			infoProc.StartInfo.FileName = NosmanPath;
 			infoProc.StartInfo.ArgumentList.Add("info");
 			infoProc.StartInfo.ArgumentList.Add("nos.sys.vulkan");
-			infoProc.StartInfo.ArgumentList.Add("5.9");
+			infoProc.StartInfo.ArgumentList.Add("5.25");
 			infoProc.StartInfo.ArgumentList.Add("--relaxed");
 			infoProc.StartInfo.UseShellExecute = false;
 			infoProc.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
