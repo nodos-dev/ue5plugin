@@ -36,6 +36,7 @@ NOSTextureShareManager* NOSTextureShareManager::singleton;
 
 //#define FAIL_SAFE_THREAD
 //#define DEBUG_FRAME_SYNC_LOG
+//#define DEBUG_NODOS_TEXTURE_COPIES
 
 nosTextureInfo GetResourceInfo(NOSProperty* nosprop)
 {
@@ -386,8 +387,10 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOSP
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
 		[this, CopyShowAs, CopiesFiltered, frameNumber = FrameCounter](FRHICommandListImmediate& RHICmdList)
 		{
+#ifdef DEBUG_NODOS_TEXTURE_COPIES
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Output, CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN, TEXT("Nodos Copies(Output)"));
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Input, CopyShowAs == nos::fb::ShowAs::INPUT_PIN, TEXT("Nodos Copies(Input)"));
+#endif
 			TMap<ID3D12Fence*, u64> SignalGroup;
 			SetupFences(RHICmdList, CopyShowAs, SignalGroup, frameNumber);
 			for (auto& [URT, pin] : CopiesFiltered)
