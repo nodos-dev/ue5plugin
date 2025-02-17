@@ -240,6 +240,8 @@ void FNOSSceneTreeManager::StartupModule()
 	FEditorDelegates::EndPIE.AddRaw(this, &FNOSSceneTreeManager::HandleEndPIE);
 	FEditorDelegates::NewCurrentLevel.AddRaw(this, &FNOSSceneTreeManager::OnNewCurrentLevel);
 	FEditorDelegates::MapChange.AddRaw(this, &FNOSSceneTreeManager::OnMapChange);
+	
+	FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &FNOSSceneTreeManager::OnPropertyChanged);
 
 	FWorldDelegates::OnPostWorldInitialization.AddRaw(this, &FNOSSceneTreeManager::OnPostWorldInit);
 	FWorldDelegates::OnPreWorldFinishDestroy.AddRaw(this, &FNOSSceneTreeManager::OnPreWorldFinishDestroy);
@@ -1038,6 +1040,58 @@ void GetNodesWithProperty(const nos::fb::Node* node, std::vector<const nos::fb::
 		{
 			GetNodesWithProperty(child, out);
 		}
+	}
+}
+
+void FNOSSceneTreeManager::OnPropertyChanged(UObject* ObjectBeingModified, FPropertyChangedEvent& PropertyChangedEvent)
+{
+	if(PropertyChangedEvent.Property && ObjectBeingModified)
+	{
+		const FString OnChangedFunctionName = TEXT("OnChanged_") + PropertyChangedEvent.Property->GetName();
+		UFunction* OnChanged = ObjectBeingModified->GetClass()->FindFunctionByName(*OnChangedFunctionName);
+		if (OnChanged)
+		{
+			ObjectBeingModified->Modify();
+			ObjectBeingModified->ProcessEvent(OnChanged, nullptr);
+		}
+	}
+	
+	if (!PropertyChangedEvent.MemberProperty || !PropertyChangedEvent.Property)
+	{
+		return;
+	}
+	if (!ObjectBeingModified->IsA(PropertyChangedEvent.MemberProperty->GetOwner<UClass>()))
+	{
+		return;
+	}
+	//not sure whether we need this check
+	//if (PropertyChangedEvent.Property && !ObjectBeingModified->IsA(PropertyChangedEvent.Property->GetOwner<UClass>()))
+	//{
+	//	return;
+	//}
+	if (!PropertyChangedEvent.Property->IsValidLowLevel())
+	{
+		return;
+	}
+	if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyChangedEvent.Property, ObjectBeingModified}))
+	{
+		auto nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyChangedEvent.Property, ObjectBeingModified});
+		if(nosprop->TypeName != nos::Generic::GetFullyQualifiedName())
+		{
+			nosprop->UpdatePinValue();
+			SendPinValueChanged(nosprop->Id, nosprop->data);
+		}
+		return;
+	}
+	if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyChangedEvent.MemberProperty, ObjectBeingModified}))
+	{
+		auto nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyChangedEvent.MemberProperty, ObjectBeingModified});
+		if(nosprop->TypeName != nos::Generic::GetFullyQualifiedName())
+		{
+			nosprop->UpdatePinValue();
+			SendPinValueChanged(nosprop->Id, nosprop->data);
+		}
+		return;
 	}
 }
 
