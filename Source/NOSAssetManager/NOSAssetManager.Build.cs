@@ -21,7 +21,7 @@ public class NOSAssetManager : ModuleRules
 
 				NosIncludeDirs? dirs = NOSClient.GetSDKDir(Target.RelativeEnginePath);
 
-				if (dirs == null || String.IsNullOrEmpty(dirs?.NodosSDKDir) || String.IsNullOrEmpty(dirs?.VulkanSubsystemIncludeDir))
+				if (dirs?.IsAllOk() != true)
 				{
 					string errorMessage = "Please update NODOS_SDK_DIR environment variable";
 					System.Console.WriteLine(errorMessage);
@@ -33,6 +33,7 @@ public class NOSAssetManager : ModuleRules
 				PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
 				PublicIncludePaths.Add(SDKIncludeDir);
 				PublicIncludePaths.Add(dirs?.VulkanSubsystemIncludeDir);
+				PublicIncludePaths.Add(dirs?.TrackIncludeDir);
 
 				PublicDependencyModuleNames.AddRange(
 					new string[]

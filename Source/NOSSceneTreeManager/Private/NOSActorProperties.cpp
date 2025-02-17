@@ -10,6 +10,7 @@
 #include "NOSSceneTreeManager.h"
 #include "PropertyEditorModule.h"
 #include "Engine/Engine.h"
+#include <nosTrack/Track_generated.h>
 
 #define CHECK_PROP_SIZE() {if (size != Property->GetElementSize()){UE_LOG(LogNOSSceneTreeManager, Error, TEXT("Property size mismatch with Nodos"));return;}}
 
@@ -321,14 +322,14 @@ void NOSTrackProperty::SetPropValue_Internal(void* val, size_t size, uint8* cust
 
 bool NOSTrackProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	std::vector<flatbuffers::Offset<nos::fb::Track>> TrackArray;
+	std::vector<flatbuffers::Offset<nos::track::Track>> TrackArray;
 	for(int i = 0; i < ArrayHelper.Num(); i++)
 	{
 		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
 		{
 			FNOSTrack TrackData = *(FNOSTrack*)ElementPtr;
 			
-			nos::fb::TTrack TempTrack = {};
+			nos::track::TTrack TempTrack = {};
 			TempTrack.location = nos::fb::vec3(TrackData.location.X, TrackData.location.Y, TrackData.location.Z);
 			TempTrack.rotation = nos::fb::vec3(TrackData.rotation.X, TrackData.rotation.Y, TrackData.rotation.Z);
 			TempTrack.fov = TrackData.fov;
@@ -342,30 +343,30 @@ bool NOSTrackProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScript
 			Distortion.mutable_k1k2() = nos::fb::vec2(TrackData.k1, TrackData.k2);
 			Distortion.mutable_center_shift() = nos::fb::vec2(TrackData.center_shift.X, TrackData.center_shift.Y);
 			Distortion.mutate_distortion_scale(TrackData.distortion_scale);
-			auto offset = nos::fb::CreateTrack(fb, &TempTrack);
+			auto offset = nos::track::CreateTrack(fb, &TempTrack);
 			TrackArray.push_back(offset);
 		}
 	}
 	auto offset = fb.CreateVector(TrackArray).o;
 	//auto offset = fb.CreateVectorOfSortedTables(&TrackArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::fb::Track>>(offset));
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::track::Track>>(offset));
 	
 	return true;
 }
 
 void NOSTrackProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::fb::Track>>*)val; 
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::track::Track>>*)val; 
 	int ct = vec->size();
 	ArrayHelper.Resize(ct);
 	for(int i = 0; i < ct; i++)
 	{
 		ArrayHelper.ExpandForIndex(i);
 		auto track = vec->Get(i);
-		// auto track = flatbuffers::GetRoot<nos::fb::Track>(val);
+		// auto track = flatbuffers::GetRoot<nos::track::Track>(val);
 		FNOSTrack* TrackData = (FNOSTrack*)ArrayHelper.GetRawPtr(i);
 		*TrackData = {};
-		nos::fb::TTrack TTrack = {};
+		nos::track::TTrack TTrack = {};
 		track->UnPackTo(&TTrack);
 
 		TrackData->location = FVector(TTrack.location.x(), TTrack.location.y(), TTrack.location.z());
@@ -388,50 +389,50 @@ void NOSTrackProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHe
 
 void NOSTrackProperty::SetProperty_InCont(void* container, void* val)
 {
-	auto track = flatbuffers::GetRoot<nos::fb::Track>(val);
+	auto track = flatbuffers::GetRoot<nos::track::Track>(val);
 	FNOSTrack* TrackData = structprop->ContainerPtrToValuePtr<FNOSTrack>(container);
 	// TrackData.location = FVector(0);
 	// TrackData.rotation = FVector(0);
 	// TrackData.center_shift = FVector2d(0);
 	// TrackData.sensor_size = FVector2d(0);
 
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_LOCATION))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_LOCATION))
 	{
 		TrackData->location = FVector(track->location()->x(), track->location()->y(), track->location()->z());
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_ROTATION))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_ROTATION))
 	{
 		TrackData->rotation = FVector(track->rotation()->x(), track->rotation()->y(), track->rotation()->z());
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_FOV))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_FOV))
 	{
 		TrackData->fov = track->fov();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_FOCUS))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_FOCUS))
 	{
 		TrackData->focus_distance = track->focus_distance();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_ZOOM))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_ZOOM))
 	{
 		TrackData->zoom = track->zoom();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_RENDER_RATIO))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_RENDER_RATIO))
 	{
 		TrackData->render_ratio = track->render_ratio();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_SENSOR_SIZE))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_SENSOR_SIZE))
 	{
 		TrackData->sensor_size = FVector2D(track->sensor_size()->x(), track->sensor_size()->y());
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_PIXEL_ASPECT_RATIO))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_PIXEL_ASPECT_RATIO))
 	{
 		TrackData->pixel_aspect_ratio = track->pixel_aspect_ratio();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_NODAL_OFFSET))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_NODAL_OFFSET))
 	{
 		TrackData->nodal_offset = track->nodal_offset();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::fb::Track::VT_LENS_DISTORTION))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_LENS_DISTORTION))
 	{
 		auto distortion = track->lens_distortion();
 		TrackData->distortion_scale = distortion->distortion_scale();
@@ -524,7 +525,7 @@ std::vector<uint8> NOSTrackProperty::UpdatePinValue(uint8* customContainer)
 		FNOSTrack TrackData = *Property->ContainerPtrToValuePtr<FNOSTrack>(container);
 		
 		flatbuffers::FlatBufferBuilder fb;
-		nos::fb::TTrack TempTrack;
+		nos::track::TTrack TempTrack;
 		TempTrack.location = nos::fb::vec3(TrackData.location.X, TrackData.location.Y, TrackData.location.Z);
 		TempTrack.rotation = nos::fb::vec3(TrackData.rotation.X, TrackData.rotation.Y, TrackData.rotation.Z);
 		TempTrack.fov = TrackData.fov;
@@ -539,7 +540,7 @@ std::vector<uint8> NOSTrackProperty::UpdatePinValue(uint8* customContainer)
 		Distortion.mutable_center_shift() = nos::fb::vec2(TrackData.center_shift.X, TrackData.center_shift.Y);
 		Distortion.mutate_distortion_scale(TrackData.distortion_scale);
 		
-		auto offset = nos::fb::CreateTrack(fb, &TempTrack);
+		auto offset = nos::track::CreateTrack(fb, &TempTrack);
 		fb.Finish(offset);
 		nos::Buffer buffer = fb.Release();
 		data = buffer;
@@ -672,9 +673,9 @@ flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBuffer
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	auto displayName = Property->GetDisplayNameText().ToString();
 	DisplayName = ValidateName(DisplayName);
-	if (TypeName == "nos.fb.Void" || TypeName.size() < 1)
+	if (TypeName == nos::Generic::GetFullyQualifiedName() || TypeName.size() < 1)
 	{
-		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), "nos.fb.Void", nos::fb::ShowAs::NONE, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, 0, 0, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(), nos::fb::ShowAs::NONE, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, 0, 0, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 	}
 	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(),  PinShowAs, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, &min_val, &max_val, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 }
@@ -797,7 +798,7 @@ NOSStructProperty::NOSStructProperty(UObject* container, FStructProperty* uprope
 	}
 
 	data = std::vector<uint8_t>(1, 0);
-	TypeName = "nos.fb.Void";
+	TypeName = nos::Generic::GetFullyQualifiedName();
 }
 
 void NOSStructProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
@@ -886,7 +887,7 @@ NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uprope
 		if(!Widget)
 		{
 			data = std::vector<uint8_t>(1, 0);
-			TypeName = "nos.fb.Void";
+			TypeName = nos::Generic::GetFullyQualifiedName();
 			return;
 		}
 	
@@ -978,12 +979,12 @@ NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uprope
 		}
 
 		data = std::vector<uint8_t>(1, 0);
-		TypeName = "nos.fb.Void";
+		TypeName = nos::Generic::GetFullyQualifiedName();
 	}
 	else
 	{
 		data = std::vector<uint8_t>(1, 0);
-		TypeName = "nos.fb.Void";
+		TypeName = nos::Generic::GetFullyQualifiedName();
 	}
 }
 
@@ -1072,7 +1073,7 @@ bool NOSStringProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScrip
 		}
 	}
 	auto offset = fb.CreateVector(StringArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::fb::Track>>(offset));
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::track::Track>>(offset));
 	return true;
 }
 
@@ -1195,7 +1196,7 @@ bool NOSTextProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptA
 		}
 	}
 	auto offset = fb.CreateVector(StringArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::fb::Track>>(offset));
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::track::Track>>(offset));
 	return true;
 }
 
@@ -1482,13 +1483,13 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 
 	prop->UpdatePinValue();
 	prop->default_val = prop->data;
-	if (prop->TypeName == "nos.fb.Void")
+	if (prop->TypeName == nos::Generic::GetFullyQualifiedName())
 	{
 		prop->data.clear();
 		prop->default_val.clear();
 	}
 #if 0 //default properties from objects
-	if (prop->TypeName == "nos.fb.Void")
+	if (prop->TypeName == nos::Generic::GetFullyQualifiedName())
 	{
 		prop->data.clear();
 		prop->default_val.clear();

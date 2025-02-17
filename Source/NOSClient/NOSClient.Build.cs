@@ -12,10 +12,16 @@ public struct NosIncludeDirs
 {
 	public string NodosSDKDir;
 	public string VulkanSubsystemIncludeDir;
-	public NosIncludeDirs(string NodosSDKDir, string VulkanSubsystemIncludeDir)
+	public string TrackIncludeDir;
+	public NosIncludeDirs(string NodosSDKDir, string VulkanSubsystemIncludeDir, string TrackIncludeDir)
 	{
 		this.NodosSDKDir = NodosSDKDir;
 		this.VulkanSubsystemIncludeDir = VulkanSubsystemIncludeDir;
+		this.TrackIncludeDir = TrackIncludeDir;
+	}
+	public bool IsAllOk()
+	{
+		return !String.IsNullOrEmpty(NodosSDKDir) && !String.IsNullOrEmpty(VulkanSubsystemIncludeDir) && !String.IsNullOrEmpty(TrackIncludeDir);
 	}
 }
 
@@ -43,6 +49,85 @@ public class NOSClient : ModuleRules
 		Console.ForegroundColor = oldColor;
 		if (shouldThrow)
 		throw new BuildException(Message);
+	}
+
+	public static string InstallNodosModuleAndGetPublicInclude(string NosmanPath, string ModuleName, string Version)
+	{
+		System.Diagnostics.Process installProc = new System.Diagnostics.Process();
+		installProc.StartInfo.FileName = NosmanPath;
+		installProc.StartInfo.ArgumentList.Add("install");
+		installProc.StartInfo.ArgumentList.Add(ModuleName);
+		installProc.StartInfo.ArgumentList.Add(Version);
+		installProc.StartInfo.UseShellExecute = false;
+		installProc.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
+		installProc.StartInfo.RedirectStandardOutput = true;
+		installProc.StartInfo.RedirectStandardError = true;
+		installProc.StartInfo.CreateNoWindow = true;
+		installProc.Start();
+		installProc.WaitForExit();
+
+		string output = installProc.StandardOutput.ReadToEnd();
+		// Print stderr or stdout if failed
+		if (installProc.ExitCode != 0)
+		{
+			Console.WriteLine();
+			LogError("Failed to get install " + ModuleName);
+			var errOut = installProc.StandardError.ReadToEnd();
+			if (!String.IsNullOrEmpty(errOut))
+			{
+				LogError(errOut, true);
+			}
+			else if (!String.IsNullOrEmpty(output))
+			{
+				LogError(output, true);
+			}
+			return null;
+		}
+
+		System.Diagnostics.Process infoProc = new System.Diagnostics.Process();
+		infoProc.StartInfo.FileName = NosmanPath;
+		infoProc.StartInfo.ArgumentList.Add("info");
+		infoProc.StartInfo.ArgumentList.Add(ModuleName);
+		infoProc.StartInfo.ArgumentList.Add(Version);
+		infoProc.StartInfo.ArgumentList.Add("--relaxed");
+		infoProc.StartInfo.UseShellExecute = false;
+		infoProc.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
+		infoProc.StartInfo.RedirectStandardOutput = true;
+		infoProc.StartInfo.RedirectStandardError = true;
+		infoProc.StartInfo.CreateNoWindow = true;
+		infoProc.Start();
+		infoProc.WaitForExit();
+
+		output = infoProc.StandardOutput.ReadToEnd();
+		if (infoProc.ExitCode != 0)
+		{
+			Console.WriteLine();
+			LogError("Failed to get info of " + ModuleName + ": ");
+			var errOut = infoProc.StandardError.ReadToEnd();
+			if (!String.IsNullOrEmpty(errOut))
+			{
+				LogError(errOut, true);
+			}
+			else if (!String.IsNullOrEmpty(output))
+			{
+				LogError(output, true);
+			}
+			return null;
+		}
+
+		if (!JsonObject.TryParse(output, out var SysVulkanInfo))
+		{
+			LogError("Failed to parse info of " + ModuleName + ": ");
+			LogError(output, true);
+			return null;
+		}
+
+		if (!SysVulkanInfo.TryGetStringField("public_include_folder", out var PublicIncludeDir))
+		{
+			LogError("Could not find public include folder in info of " + ModuleName + ": " + output, true);
+			return null;
+		}
+		return PublicIncludeDir;
 	}
 
 	public static NosIncludeDirs? GetSDKDir(string RelativeEnginePath)
@@ -117,87 +202,10 @@ public class NOSClient : ModuleRules
 			NodosSDKDir = SDKdir;
 		}
 
-		string VulkanSubsystemIncludeDir;
-		// Get Vulkan Subsystem Include Dir
-		{
-			// Install nos.sys.vulkan
-			System.Diagnostics.Process installProc = new System.Diagnostics.Process();
-			installProc.StartInfo.FileName = NosmanPath;
-			installProc.StartInfo.ArgumentList.Add("install");
-			installProc.StartInfo.ArgumentList.Add("nos.sys.vulkan");
-			installProc.StartInfo.ArgumentList.Add("5.25");
-			installProc.StartInfo.UseShellExecute = false;
-			installProc.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
-			installProc.StartInfo.RedirectStandardOutput = true;
-			installProc.StartInfo.RedirectStandardError = true;
-			installProc.StartInfo.CreateNoWindow = true;
-			installProc.Start();
-			installProc.WaitForExit();
+		string VulkanSubsystemIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.vulkan", "6.0");
+		string TrackIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.track", "1.9");
 
-			string output = installProc.StandardOutput.ReadToEnd();
-			// Print stderr or stdout if failed
-			if (installProc.ExitCode != 0)
-			{
-				Console.WriteLine();
-				LogError("Failed to get install nos.sys.vulkan");
-				var errOut = installProc.StandardError.ReadToEnd();
-				if (!String.IsNullOrEmpty(errOut))
-				{
-					LogError(errOut, true);
-				}
-				else if (!String.IsNullOrEmpty(output))
-				{
-					LogError(output, true);
-				}
-				return null;
-			}
-
-			System.Diagnostics.Process infoProc = new System.Diagnostics.Process();
-			infoProc.StartInfo.FileName = NosmanPath;
-			infoProc.StartInfo.ArgumentList.Add("info");
-			infoProc.StartInfo.ArgumentList.Add("nos.sys.vulkan");
-			infoProc.StartInfo.ArgumentList.Add("5.25");
-			infoProc.StartInfo.ArgumentList.Add("--relaxed");
-			infoProc.StartInfo.UseShellExecute = false;
-			infoProc.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
-			infoProc.StartInfo.RedirectStandardOutput = true;
-			infoProc.StartInfo.RedirectStandardError = true;
-			infoProc.StartInfo.CreateNoWindow = true;
-			infoProc.Start();
-			infoProc.WaitForExit();
-
-			output = infoProc.StandardOutput.ReadToEnd();
-			if (infoProc.ExitCode != 0)
-			{
-				Console.WriteLine();
-				LogError("Failed to get nos.sys.vulkan info");
-				var errOut = infoProc.StandardError.ReadToEnd();
-				if (!String.IsNullOrEmpty(errOut))
-				{
-					LogError(errOut, true);
-				}
-				else if (!String.IsNullOrEmpty(output))
-				{
-					LogError(output, true);
-				}
-				return null;
-			}
-
-			if (!JsonObject.TryParse(output, out var SysVulkanInfo))
-			{
-				LogError("Failed to parse nos.sys.vulkan info:");
-				LogError(output, true);
-				return null;
-			}
-
-			if (!SysVulkanInfo.TryGetStringField("public_include_folder", out var PublicIncludeDir))
-			{
-				LogError("Could not find public include folder in nos.sys.vulkan info:" + output, true);
-				return null;
-			}
-			VulkanSubsystemIncludeDir = PublicIncludeDir;
-		}
-		return new NosIncludeDirs(NodosSDKDir, VulkanSubsystemIncludeDir);
+		return new NosIncludeDirs(NodosSDKDir, VulkanSubsystemIncludeDir, TrackIncludeDir);
 	}
 
 	public NOSClient(ReadOnlyTargetRules Target) : base(Target)
@@ -210,7 +218,7 @@ public class NOSClient : ModuleRules
 				CppStandard = CppStandardVersion.Cpp20;
 
 				NosIncludeDirs? dirs = GetSDKDir(Target.RelativeEnginePath);
-				if (dirs == null || String.IsNullOrEmpty(dirs?.NodosSDKDir) || string.IsNullOrEmpty(dirs?.VulkanSubsystemIncludeDir))
+				if (dirs?.IsAllOk() != true)
 				{
 					string errorMessage = "Failed to get Nodos SDK info from nodos.exe";
 					LogError(errorMessage, true);

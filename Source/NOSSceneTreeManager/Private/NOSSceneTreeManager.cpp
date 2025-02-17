@@ -272,7 +272,7 @@ void FNOSSceneTreeManager::StartupModule()
 		noscf->Serialize = [funcid = noscf->Id, this](flatbuffers::FlatBufferBuilder& fbb)->flatbuffers::Offset<nos::fb::Node>
 			{
 				std::vector<uint8_t> data;
-				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Toggle Two Way Binding", "UE5.UE5", false, true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
+				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Toggle Two Way Binding", "UE5.UE5", true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
 				, 0, false, nullptr, 0, "Toggle the two way binding feature for portal pins.");
 			};
 		noscf->Function = [this](TMap<FGuid, std::vector<uint8>> properties)
@@ -304,7 +304,7 @@ void FNOSSceneTreeManager::StartupModule()
 					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&showHiddenActorsId, TCHAR_TO_ANSI(TEXT("Show Hidden Actors")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", 0, &showHiddenActorsData, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 					"Show hidden Unreal actors on Nodos Scene Outliner")
 				};
-				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Refresh Scene Outliner", "UE5.UE5", false, true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
+				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Refresh Scene Outliner", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
 				, 0, false, nullptr, 0, "Add actors spawned since last refresh to the scene outliner.");
 			};
 		noscf->Function = [this, alwaysUpdateId = alwaysUpdateId, showHiddenActorsId = showHiddenActorsId](TMap<FGuid, std::vector<uint8>> properties)
@@ -341,7 +341,7 @@ void FNOSSceneTreeManager::StartupModule()
 				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Actor List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_ACTOR_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin),
 			};
 			FillSpawnActorFunctionTransformPins(fbb, spawnPins, PinIds);
-			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Actor", "UE5.UE5", false, true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
+			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Actor", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
 		};
 		noscf->Function = [this, PinIds](TMap<FGuid, std::vector<uint8>> properties)
 		{
@@ -361,7 +361,7 @@ void FNOSSceneTreeManager::StartupModule()
 		noscf->Id = StringToFGuid(UniqueFunctionName);
 		noscf->Serialize = [funcid = noscf->Id, this](flatbuffers::FlatBufferBuilder& fbb)->flatbuffers::Offset<nos::fb::Node>
 			{
-				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Reload Level", "UE5.UE5", false, true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
+				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Reload Level", "UE5.UE5", true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
 				, 0, false, nullptr, 0, "Reload current level");
 			};
 		noscf->Function = [this](TMap<FGuid, std::vector<uint8>> properties)
@@ -386,7 +386,7 @@ void FNOSSceneTreeManager::StartupModule()
 				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Render Target List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_RENDER_TARGET_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin),
 			};
 			FillSpawnActorFunctionTransformPins(fbb, spawnPins, PinIds);
-			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Render Target Viewer Actor", "UE5.UE5", false, true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
+			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Render Target Viewer Actor", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
 		};
 		noscf->Function = [this, PinIds](TMap<FGuid, std::vector<uint8>> properties)
 		{
@@ -415,7 +415,7 @@ void FNOSSceneTreeManager::StartupModule()
 		noscf->Serialize = [funcid = noscf->Id, this](flatbuffers::FlatBufferBuilder& fbb)->flatbuffers::Offset<nos::fb::Node>
 			{
 				std::vector<uint8_t> data;
-				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Toggle Play In Editor", "UE5.UE5", false, true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
+				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Toggle Play In Editor", "UE5.UE5", true, 0, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
 					, 0, false, nullptr, 0, "Start/Stop play in editor.");
 			};
 		noscf->Function = [this](TMap<FGuid, std::vector<uint8>> properties)
@@ -1039,8 +1039,6 @@ void GetNodesWithProperty(const nos::fb::Node* node, std::vector<const nos::fb::
 			GetNodesWithProperty(child, out);
 		}
 	}
-	
-
 }
 
 void FNOSSceneTreeManager::OnActorSpawned(AActor* InActor)
