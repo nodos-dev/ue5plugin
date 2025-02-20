@@ -3489,7 +3489,6 @@ void FNOSPropertyManager::Reset(bool ResetPortals)
 	}
 
 	PropertiesById.Empty();
-	PropertiesByPointer.Empty();
 	PropertiesByPropertyAndContainer.Empty();
 }
 

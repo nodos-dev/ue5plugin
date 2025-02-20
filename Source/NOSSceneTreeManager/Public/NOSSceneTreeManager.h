@@ -52,7 +52,6 @@ public:
 	TMap<FGuid, FGuid> PropertyToPortalPin;
 	TMap<FGuid, NOSPortal> PortalPinsById;
 	TMap<FGuid, TSharedPtr<NOSProperty>> PropertiesById;
-	TMap<FProperty*, TSharedPtr<NOSProperty>> PropertiesByPointer;
 
 	TMap<TPair<FProperty*, void*>, TSharedPtr<NOSProperty>> PropertiesByPropertyAndContainer;
 	void Reset(bool ResetPortals = true);
