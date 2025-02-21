@@ -3493,7 +3493,7 @@ void FNOSPropertyManager::ActorDeleted(FGuid DeletedActorId)
 flatbuffers::Offset<nos::fb::Pin> FNOSPropertyManager::SerializePortal(flatbuffers::FlatBufferBuilder& fbb, NOSPortal Portal, NOSProperty* SourceProperty)
 {
 	auto SerializedMetadata = SourceProperty->SerializeMetaData(fbb);
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.UniqueName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, SourceProperty->PinCanShowAs, TCHAR_TO_UTF8(*Portal.CategoryName), SourceProperty->SerializeVisualizer(fbb), 0, 0, 0, 0, 0, 0, SourceProperty->ReadOnly, 0, false, &SerializedMetadata, 0, nos::fb::PinContents::PortalPin, nos::fb::CreatePortalPin(fbb, (nos::fb::UUID*)&Portal.SourceId).Union(), 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.UniqueName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, SourceProperty->PinCanShowAs, TCHAR_TO_UTF8(*Portal.CategoryName), SourceProperty->SerializeVisualizer(fbb), &SourceProperty->data, 0, 0, 0, 0, 0, SourceProperty->ReadOnly, 0, false, &SerializedMetadata, 0, nos::fb::PinContents::PortalPin, nos::fb::CreatePortalPin(fbb, (nos::fb::UUID*)&Portal.SourceId).Union(), 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
 }
 
 void FNOSPropertyManager::Reset(bool ResetPortals)
