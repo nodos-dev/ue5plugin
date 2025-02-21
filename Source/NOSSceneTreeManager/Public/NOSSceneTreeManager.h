@@ -44,6 +44,7 @@ public:
 	void CreatePortal(FProperty* uproperty, UObject* Container, nos::fb::ShowAs ShowAs);
 	void ActorDeleted(FGuid DeletedActorId);
 	flatbuffers::Offset<nos::fb::Pin> SerializePortal(flatbuffers::FlatBufferBuilder& fbb, NOSPortal Portal, NOSProperty* SourceProperty);
+	void CreatePortalForTransformProperty(USceneComponent* RootComponent, const FName& Name);
 	
 	FNOSClient* NOSClient = nullptr;
 	NOSSceneTree& SceneTree;

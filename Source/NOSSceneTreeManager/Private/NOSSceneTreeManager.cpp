@@ -3090,6 +3090,22 @@ AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters P
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
 	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
 
+	{
+		// auto portal location / rotation / scale if given
+		auto rootComponent = SpawnedActor->GetRootComponent();
+		auto& NOSSceneTreeManager = FModuleManager::LoadModuleChecked<FNOSSceneTreeManager>("NOSSceneTreeManager");
+		auto& NOSPropertyManager = NOSSceneTreeManager.NOSPropertyManager;
+
+		if (!rootComponent->GetRelativeLocation().IsZero())
+			NOSPropertyManager.CreatePortalForTransformProperty(rootComponent, TEXT("RelativeLocation"));
+
+		if (!rootComponent->GetRelativeRotation().IsZero())
+			NOSPropertyManager.CreatePortalForTransformProperty(rootComponent, TEXT("RelativeRotation"));
+
+		if (rootComponent->GetRelativeScale3D() != FVector(1.f, 1.f, 1.f))
+			NOSPropertyManager.CreatePortalForTransformProperty(rootComponent, TEXT("RelativeScale3D"));
+	}
+
 	return SpawnedActor;
 }
 
@@ -3536,6 +3552,16 @@ void FNOSPropertyManager::OnBeginFrame()
 void FNOSPropertyManager::OnEndFrame()
 {
 	// TODO: copy and dirty CPU out pins
+}
+
+void FNOSPropertyManager::CreatePortalForTransformProperty(USceneComponent* RootComponent, const FName& Name)
+{
+	if (FProperty* Property = RootComponent->GetClass()->FindPropertyByName(Name))
+	{
+		auto property = CreateProperty(RootComponent, Property, "Transform");
+		property->UpdatePinValue();
+		CreatePortal(property->Id, nos::fb::ShowAs::PROPERTY);
+	}
 }
 
 std::vector<flatbuffers::Offset<nos::ContextMenuItem>> ContextMenuActions::SerializeActorMenuItems(flatbuffers::FlatBufferBuilder& fbb)
