@@ -2587,13 +2587,9 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 		NOSPropertyManager.PortalPinsById.Remove(PortalId);
 	}
 
-	for (auto child : node->Children)
-	{
-		if (auto childActorNode = child->GetAsActorNode())
-		{
+	for (auto rIt = node->Children.rbegin(); rIt != node->Children.rend(); rIt++)
+		if (auto childActorNode = (*rIt)->GetAsActorNode())
 			OnActorDetached(childActorNode->actor.Get(), node->actor.Get());
-		}
-	}
 
 	//delete from parent
 	FGuid parentId = FNOSClient::NodeId;
@@ -2608,7 +2604,7 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 				found = child;
 			}
 		}
-		auto v = parent->Children;
+		auto& v = parent->Children;
 		auto it = std::find(v.begin(), v.end(), found);
 		if (it != v.end())
 			v.erase(it);
