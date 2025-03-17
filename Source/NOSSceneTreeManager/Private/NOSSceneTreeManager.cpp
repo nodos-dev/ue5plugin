@@ -2039,7 +2039,11 @@ bool FNOSSceneTreeManager::PopulateNode(FGuid nodeId)
 		{
 			if(child->IsValidLowLevel() && !SceneTree.GetNode(child))
 			{
-				SceneTree.AddActor(actorNode, child);
+				auto newActor = SceneTree.AddActor(actorNode, child);
+				if (ColoredChilds)
+				{
+					newActor->nosMetaData.Add("NodeColor", HEXCOLOR_Reality_Node);
+				}
 			}
 		}
 		
