@@ -133,23 +133,22 @@ NOSTextureShareManager::~NOSTextureShareManager()
 
 nos::sys::vulkan::TTexture NOSTextureShareManager::AddTexturePin(NOSProperty* nosprop)
 {
-	ResourceInfo copyInfo;
+	auto copyInfo = MakeShared<SharedResourceInfo>();
 	nos::sys::vulkan::TTexture texture;
-
-	if(!CreateTextureResource(nosprop, texture, copyInfo))
+	if(!CreateTextureResource(nosprop, texture, *copyInfo))
 	{
 		return texture;
 	}
 	
-
+	
 	{
 		//start property pins as output pins
-		Copies.Add(nosprop, copyInfo);
+		Copies.Add(nosprop, std::move(copyInfo));
 	}
 	return texture;
 }
 
-bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sys::vulkan::TTexture& Texture, ResourceInfo& Resource)
+bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sys::vulkan::TTexture& Texture, SharedResourceInfo& Resource)
 	{
 	nosTextureInfo info = GetResourceInfo(nosprop);
 	UObject* obj = nosprop->GetRawObjectContainer();
@@ -187,9 +186,8 @@ bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sy
 	ID3D12Resource* DXResource = Result->GetResource()->GetResource();
     DXResource->SetName(*nosprop->DisplayName);
 	
-    HANDLE handle;
+	HANDLE handle = 0;
     NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(DXResource, 0, GENERIC_ALL, 0, &handle));
-	
 	Texture.resolution = nos::sys::vulkan::SizePreset::CUSTOM;
 	Texture.width = info.Width;
 	Texture.height = info.Height;
@@ -208,6 +206,7 @@ bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sy
 	Resource.SrcNosp = nosprop;
 	Resource.DstResource = NewRenderTarget2D;
 	Resource.ShowAs = nosprop->PinShowAs;
+	Resource.SharedHandle = handle;
 	return true;
 }
 
@@ -221,9 +220,10 @@ bool NOSTextureShareManager::UpdateTexturePin(NOSProperty* NosProperty, nos::sys
 {
 	nosTextureInfo info = GetResourceInfo(NosProperty);
 
-	auto resourceInfo = Copies.Find(NosProperty);
-	if (resourceInfo == nullptr)
+	auto resourceInfoPtrPtr = Copies.Find(NosProperty);
+	if (resourceInfoPtrPtr == nullptr)
 		return false;
+	auto& resourceInfoSharedPtr = *resourceInfoPtrPtr;
 
 	if (Texture.external_memory.pid() != (uint64_t)FPlatformProcess::GetCurrentProcessId())
 		return false;
@@ -240,15 +240,16 @@ bool NOSTextureShareManager::UpdateTexturePin(NOSProperty* NosProperty, nos::sys
 	{
 		changed = true;
 		
-		ResourcesToDelete.Enqueue({resourceInfo->DstResource, GFrameCounter});
-		nos::fb::ShowAs tmp = resourceInfo->ShowAs;
-		if(!CreateTextureResource(NosProperty, Texture, *resourceInfo))
+		nos::fb::ShowAs tmp = resourceInfoSharedPtr->ShowAs;
+		ResourcesToDelete.Enqueue({ std::move(resourceInfoSharedPtr), GFrameCounter });
+
+		resourceInfoSharedPtr = MakeShared<SharedResourceInfo>();
+		if(!CreateTextureResource(NosProperty, Texture, *resourceInfoSharedPtr))
 		{
 			return changed;
 		}
 		
-		resourceInfo->ShowAs = tmp;
-		Copies[NosProperty] = *resourceInfo;
+		resourceInfoSharedPtr->ShowAs = tmp;
 	}
 
 	return changed;
@@ -256,18 +257,13 @@ bool NOSTextureShareManager::UpdateTexturePin(NOSProperty* NosProperty, nos::sys
 
 void NOSTextureShareManager::UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs)
 {
-	if(Copies.Contains(NosProperty))
-	{
-		auto resourceInfo = Copies.Find(NosProperty);
-		resourceInfo->ShowAs = NewShowAs;
-	}
+	if(auto* resourceInfo = Copies.Find(NosProperty))
+		(*resourceInfo)->ShowAs = NewShowAs;
 }
 
 void NOSTextureShareManager::TextureDestroyed(NOSProperty* textureProp)
 {
 	Copies.Remove(textureProp);
-	
-	//TODO delete real resource	
 }
 
 static HANDLE DupeHandle(uint64_t pid, HANDLE handle)
@@ -294,9 +290,9 @@ static bool ImportSharedFence(uint64_t pid, HANDLE handle, ID3D12Device* pDevice
        return true;
 }
 
-void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, ResourceInfo>& Copies, TMap<UTextureRenderTarget2D*, ResourceInfo>& FilteredCopies)
+void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>>& Copies, TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>>& FilteredCopies)
 {
-	for (auto [nosprop, info] : Copies)
+	for (auto const& [nosprop, info] : Copies)
 	{
 		UObject* obj = nosprop->GetRawObjectContainer();
 		if (!obj) continue;
@@ -305,7 +301,7 @@ void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, ResourceInfo>
 		auto URT = Cast<UTextureRenderTarget2D>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UTextureRenderTarget2D>(obj)));
 		if (!URT) continue;
 		
-		 if(info.DstResource->SizeX != URT->SizeX || info.DstResource->SizeY != URT->SizeY)
+		 if(info->DstResource->SizeX != URT->SizeX || info->DstResource->SizeY != URT->SizeY)
 		 {
 		 	//todo texture is changed update it
 		 	
@@ -337,7 +333,7 @@ void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, ResourceInfo>
 			}
 		 }
 			
-		if(info.ShowAs == FilterShowAs)
+		if(info->ShowAs == FilterShowAs)
 		{
 			FilteredCopies.Add(URT, info);
 		}
@@ -378,9 +374,9 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 	}
 }
 
-void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOSProperty*, ResourceInfo>& CopyMap)
+void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>>& CopyMap)
 {
-	TMap<UTextureRenderTarget2D*, ResourceInfo> CopiesFiltered;
+	TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>> CopiesFiltered;
 	FilterCopies(CopyShowAs, CopyMap, CopiesFiltered);
 
 	//auto cmdData = GetNewCommandList();
@@ -396,8 +392,8 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOSP
 			for (auto& [URT, pin] : CopiesFiltered)
 			{
 				FRHICopyTextureInfo CopyInfo;
-				CopyInfo.Size = FIntVector(pin.DstResource->SizeX, pin.DstResource->SizeY, 1);
-				FRHITexture* dst = pin.DstResource->GetRenderTargetResource()->GetRenderTargetTexture();
+				CopyInfo.Size = FIntVector(pin->DstResource->SizeX, pin->DstResource->SizeY, 1);
+				FRHITexture* dst = pin->DstResource->GetRenderTargetResource()->GetRenderTargetTexture();
 				FRHITexture* src = URT->GetRenderTargetResource()->GetRenderTargetTexture();
 				if(CopyShowAs == nos::fb::ShowAs::INPUT_PIN)
 				{
@@ -436,13 +432,10 @@ void NOSTextureShareManager::OnEndFrame()
 	FrameCounter++;
 	while(!ResourcesToDelete.IsEmpty())
 	{
-		TPair<TObjectPtr<UTextureRenderTarget2D>, uint32_t> resource;
-		ResourcesToDelete.Peek(resource);
-		if(resource.Value + 5 <= GFrameCounter) // resources are deleted after 5 frames, because we need to make sure that they are no longer in use
+		auto* resource = ResourcesToDelete.Peek();
+		if(resource->Value + 5 <= GFrameCounter) // resources are deleted after 5 frames, because we need to make sure that they are no longer in use
 		{
 			FlushRenderingCommands();
-			resource.Key->ReleaseResource();
-			resource.Key = nullptr;
 			ResourcesToDelete.Pop();
 		}
 		else
@@ -487,6 +480,7 @@ void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumb
 
 void NOSTextureShareManager::Reset()
 {
+
 	Copies.Empty();
 	PendingCopyQueue.Empty();
 }
@@ -548,5 +542,14 @@ void NOSTextureShareManager::RenewSemaphores()
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(OutputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.OutputSemaphore));
 }
 
-	
-	
+SharedResourceInfo::~SharedResourceInfo()
+{
+	if (SharedHandle)
+	{
+		CloseHandle(SharedHandle);
+	}
+	if (DstResource)
+	{
+		DstResource->ReleaseResource();
+	}
+}

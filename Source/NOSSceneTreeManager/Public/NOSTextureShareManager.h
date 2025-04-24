@@ -37,14 +37,6 @@ void MemoryBarrier();
         }                                                                                           \
     }
 
-struct ResourceInfo
-{
-	NOSProperty* SrcNosp = 0;
-	UPROPERTY()
-	TObjectPtr<UTextureRenderTarget2D> DstResource = 0;
-	nos::fb::ShowAs ShowAs;
-};
-
 enum CmdState
 {
 	Pending,
@@ -68,6 +60,20 @@ struct SyncSemaphoresExport
 	HANDLE OutputSemaphore;
 };
 
+struct SharedResourceInfo
+{
+	SharedResourceInfo() = default;
+	SharedResourceInfo(const SharedResourceInfo&) = delete;
+	SharedResourceInfo(SharedResourceInfo&&) = delete;
+	SharedResourceInfo& operator=(const SharedResourceInfo&) = delete;
+	SharedResourceInfo& operator=(SharedResourceInfo&&) = delete;
+	~SharedResourceInfo();
+	NOSProperty* SrcNosp = 0;
+	UPROPERTY()
+	TObjectPtr<UTextureRenderTarget2D> DstResource = 0;
+	HANDLE SharedHandle = 0;
+	nos::fb::ShowAs ShowAs;
+};
 //This class manages copy operations between textures of Nodos and unreal 2d texture target
 class NOSSCENETREEMANAGER_API NOSTextureShareManager
 {
@@ -87,7 +93,7 @@ public:
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
 	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
-	void ProcessCopies(nos::fb::ShowAs, TMap<NOSProperty*, ResourceInfo>& CopyMap);
+	void ProcessCopies(nos::fb::ShowAs, TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>>& CopyMap);
 	void OnBeginFrame();
 	void OnEndFrame();
 	bool SwitchStateToSynced();
@@ -102,11 +108,6 @@ public:
 
 	TMap<FGuid, NOSProperty*> PendingCopyQueue;
 
-	TQueue<TPair<TObjectPtr<UTextureRenderTarget2D>, uint32_t>> ResourcesToDelete;
-	
-	TMap<NOSProperty*, ResourceInfo> CopyOnTick;
-	UPROPERTY()
-	TMap<NOSProperty*, ResourceInfo> Copies;
 
 	uint64_t FrameCounter = 0;
 	ID3D12Fence* InputFence = nullptr;
@@ -120,9 +121,12 @@ public:
 	
 	void RenewSemaphores();
 private:
-bool CreateTextureResource(NOSProperty*, nos::sys::vulkan::TTexture& Texture, ResourceInfo& Resource);
+	UPROPERTY()
+	TQueue<TPair<TSharedPtr<SharedResourceInfo>, uint32_t>> ResourcesToDelete;
+	UPROPERTY()
+	TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>> Copies;
+	bool CreateTextureResource(NOSProperty*, nos::sys::vulkan::TTexture& Texture, SharedResourceInfo& Resource);
 
-private:
 	void Initiate();
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;
 	FRunnableThread* FailSafeThread = nullptr;
