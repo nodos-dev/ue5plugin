@@ -35,12 +35,19 @@ public:
 
 	}
 
-	void Step(nos::fb::vec2u deltaSeconds)
+	void Step(const nos::fb::vec2u* deltaSeconds)
 	{
 		std::unique_lock lock(Mutex);
-		if(deltaSeconds.x() != 0)
+		if(deltaSeconds && deltaSeconds->x() != 0)
 		{
-			CustomDeltaTime = deltaSeconds.x() / (double)deltaSeconds.y();
+			CustomDeltaTime = deltaSeconds->x() / (double)deltaSeconds->y();
+		}
+		else
+		{
+			// When Nodos was in free-run mode, it was sending 1/60 as default. But after 1.4 we are sending null to denote free-run mode.
+			// To keep the same behavior, we use the default 1/60 here.
+			// TODO: Support free-run mode without this hard-coded default.
+			CustomDeltaTime = 1. / 60.;
 		}
 		IsReadyForNextStep = true;
 		lock.unlock();

@@ -533,7 +533,7 @@ void NOSEventDelegates::OnExecuteAppInfo(nos::app::AppExecuteInfo const* appExec
 		return;
 	}
 	
-	PluginClient->OnUpdatedNodeExecuted(*appExecuteInfo->delta_seconds());
+	PluginClient->OnUpdatedNodeExecuted(appExecuteInfo->delta_seconds());
 }
 
 void NOSEventDelegates::OnNodeSelected(nos::fb::UUID const& nodeId)
@@ -866,7 +866,7 @@ bool FNOSClient::Tick(float dt)
 	return true;
 }
 
-void FNOSClient::OnUpdatedNodeExecuted(nos::fb::vec2u deltaSeconds)
+void FNOSClient::OnUpdatedNodeExecuted(const nos::fb::vec2u* deltaSeconds)
 {
 	if (NOSTimeStep.IsValid())
 	{

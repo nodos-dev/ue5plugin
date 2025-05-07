@@ -227,7 +227,7 @@ public:
 	void OnPreWorldFinishDestroy(UWorld* World);
 
 	//Called when the node is executed from Nodos
-	void OnUpdatedNodeExecuted(nos::fb::vec2u deltaSeconds);
+	void OnUpdatedNodeExecuted(const nos::fb::vec2u* deltaSeconds);
 
 	bool ExecuteConsoleCommand(const TCHAR* Input);
 
