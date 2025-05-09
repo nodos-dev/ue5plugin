@@ -3391,7 +3391,15 @@ void FNOSPropertyManager::OnBeginFrame()
 {
 	if (NOSClient->EventDelegates)
 	{
-		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter);
+		constexpr float DEFAULT_DELTA_SECONDS = 1.0f / 60.0f;
+		float DeltaSeconds = 0.0f;
+		if (FNOSSceneTreeManager::daWorld)
+			DeltaSeconds = FNOSSceneTreeManager::daWorld->GetDeltaSeconds();
+		else
+			DeltaSeconds = DEFAULT_DELTA_SECONDS;
+		constexpr float MAX_FRAME_WAIT_MULTIPLIER = 3.0f;
+		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter, DeltaSeconds * MAX_FRAME_WAIT_MULTIPLIER);
+
 		for (auto& [id, val] : executeInfo.PinValueUpdates)
 		{
 			FGuid guid = *(FGuid*)&id;
