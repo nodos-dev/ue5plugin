@@ -30,10 +30,10 @@ struct ExecuteInfo
 };
 struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 {
-	ExecuteInfo PopFrameNumber(uint64_t frameNumber)
+	ExecuteInfo PopFrameNumber(uint64_t frameNumber, float maxWaitTime)
 	{
 		ExecuteInfo executeInfo{};
-		DiscardExcessThenDequeue(executeInfo, frameNumber, true);
+		DiscardExcessThenDequeue(executeInfo, frameNumber, true, maxWaitTime);
 		return executeInfo;
 	}
 	void EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
@@ -55,12 +55,13 @@ struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 			Enqueue(std::move(start));
 	}
 private:
-	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait)
+	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait, float maxWaitTime)
 	{
 		std::scoped_lock lock(Guard);
 		uint32_t tryCount = 0;
 		bool dequeued = false;
 		bool oldLiveNow = LiveNow;
+		constexpr int retryCount = 20;
 		FPlatformProcess::ConditionalSleep([&]()
 			{
 				while (Peek(result))
@@ -78,8 +79,8 @@ private:
 					}
 				}
 
-				return !LiveNow || !wait || tryCount++ > 20;
-			}, 0.001f);
+				return !LiveNow || !wait || tryCount++ > retryCount;
+			}, maxWaitTime / retryCount);
 
 		LiveNow = dequeued;
 		if (oldLiveNow != LiveNow)
