@@ -24,7 +24,6 @@
 #include "Modules/ModuleManager.h"
 #include "SLevelViewport.h"
 
-
 //Nodos
 #include "nosFlatBuffersCommon.h"
 #include "Engine/LocalPlayer.h"
@@ -735,6 +734,11 @@ void FNOSClient::OnBeginFrame()
 
 }
 
+void ToggleFPSStat(UWorld* World)
+{
+	GEngine->Exec(World, TEXT("Stat FPS"));
+}
+
 void FNOSClient::OnPostWorldInit(UWorld* World, const UWorld::InitializationValues initValues)
 {
 	TaskQueue.Enqueue([World, this]()
@@ -744,9 +748,19 @@ void FNOSClient::OnPostWorldInit(UWorld* World, const UWorld::InitializationValu
 			{
 				return;
 			}
-			if (!GEngine->GameViewport || !GEngine->GameViewport->IsStatEnabled("FPS"))
-			{ 
-				GEngine->Exec(World, TEXT("Stat FPS"));
+
+			// If in editor mode and FPS stat is disabled, enable it
+			if (GIsEditor)
+			{
+				if (!GEngine->GameViewport || !GEngine->GameViewport->IsStatEnabled("FPS"))
+				{
+					ToggleFPSStat(World);
+				}
+			}
+			// If in game mode and FPS stat is enabled, disable it
+			else if (GEngine->GameViewport && GEngine->GameViewport->IsStatEnabled("FPS"))
+			{
+				ToggleFPSStat(World);
 			}
 
 			IsWorldInitialized = true;
