@@ -220,20 +220,17 @@ public:
 		TypeName = LitType.val;
 		if constexpr (!std::is_same_v<CppType, bool>)
 		{
-			if (UIMinString.Len())
-			{
-				CppType UIMin = TNumericLimits<CppType>::Lowest();
-				TTypeFromString<CppType>::FromString(UIMin, *UIMinString);
-				min_val = std::vector<uint8_t>(sizeof(CppType), 0);
-				memcpy(min_val.data(), &UIMin, sizeof(CppType));
-			}
-			if (UIMaxString.Len())
-			{
-				CppType UIMax = TNumericLimits<CppType>::Max();
-				TTypeFromString<CppType>::FromString(UIMax, *UIMaxString);
-				max_val = std::vector<uint8_t>(sizeof(CppType), 0);
-				memcpy(max_val.data(), &UIMax, sizeof(CppType));
-			}
+			auto constexpr parseStrValueToVec = [](const FString& str, std::vector<uint8_t>& vec, CppType initialValue) {
+				if (str.Len())
+				{
+					CppType val = initialValue;
+					TTypeFromString<CppType>::FromString(val, *str);
+					vec = std::vector<uint8_t>(sizeof(CppType), 0);
+					memcpy(vec.data(), &val, sizeof(CppType));
+				}
+			};
+			parseStrValueToVec(UIMinString, min_val, TNumericLimits<CppType>::Lowest());
+			parseStrValueToVec(UIMaxString, max_val, TNumericLimits<CppType>::Max());
 		}
 	}	   
 	T* Property;
