@@ -158,6 +158,8 @@ public:
 	FString UIMinString;
 	FString ClampMinString;
 	FString ClampMaxString;
+	FString MinString;
+	FString MaxString;
 	FString EditConditionPropertyName;
 	FProperty* EditConditionProperty = nullptr;
 	bool IsAdvanced = false;
@@ -211,6 +213,19 @@ public:
 
 };
 
+template <typename T>
+bool GetByteArrayFromNumericString(const FString& Str, std::vector<uint8_t>& OutBytes)
+{
+	if (!Str.IsEmpty())
+	{
+		T Val{};
+		LexFromString(Val, *Str);
+		OutBytes = nos::Buffer::From(Val);
+		return true;
+	}
+	return false;
+}
+
 template<typename T, nos::tmp::StrLiteral LitType, typename CppType = T::TCppType>
 requires std::is_base_of_v<FProperty, T>
 class NOSNumericProperty : public NOSProperty {
@@ -219,18 +234,8 @@ public:
 		NOSProperty(container, uproperty, parentCategory, StructPtr, parentProperty), Property(uproperty)
 	{
 		data = std::vector<uint8_t>(sizeof(CppType), 0);
-		if (!ClampMinString.IsEmpty())
-		{
-			CppType MinVal{};
-			LexFromString(MinVal, *ClampMinString);
-			min_val = nos::Buffer::From(MinVal);
-		}
-		if (!ClampMaxString.IsEmpty())
-		{
-			CppType MaxVal{};
-			LexFromString(MaxVal, *ClampMaxString);
-			max_val = nos::Buffer::From(MaxVal);
-		}
+		GetByteArrayFromNumericString<CppType>(MinString, min_val);
+		GetByteArrayFromNumericString<CppType>(MaxString, max_val);
 		TypeName = LitType.val;
 	}
 	T* Property;
@@ -482,10 +487,43 @@ protected:
 	
 };
 
-using NOSVec2Property = NOSCustomStructProperty<FVector2D, "nos.fb.vec2d">;
-using NOSVec3Property = NOSCustomStructProperty<FVector, "nos.fb.vec3d">;
-using NOSVec4Property = NOSCustomStructProperty < FVector4, "nos.fb.vec4d">;
-using NOSVec4FProperty = NOSCustomStructProperty < FVector4f, "nos.fb.vec4">;
+template <typename T>
+bool GetByteArrayFromVectorString(FString const& VectorString, std::vector<uint8_t>& OutBytes)
+{
+	if (!VectorString.IsEmpty())
+	{
+		T Value;
+		if (Value.InitFromString(VectorString))
+		{
+			OutBytes = nos::Buffer::From(Value);
+			return true;
+		}
+		typename T::FReal ComponentVal{};
+		if (LexTryParseString(ComponentVal, *VectorString))
+		{
+			OutBytes = nos::Buffer::From(T(ComponentVal));
+			return true;
+		}
+	}
+	return false;
+}
+
+template<typename T, nos::tmp::StrLiteral LitType>
+class NOSVectorProperty : public NOSCustomStructProperty<T, LitType>
+{
+public:
+	NOSVectorProperty(UObject* container, FStructProperty* uproperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr)
+		: NOSCustomStructProperty<T, LitType>(container, uproperty, parentCategory, StructPtr, parentProperty)
+	{
+		GetByteArrayFromVectorString<T>(this->MinString, this->min_val);
+		GetByteArrayFromVectorString<T>(this->MaxString, this->max_val);
+	}
+};
+
+using NOSVec2Property = NOSVectorProperty<FVector2D, "nos.fb.vec2d">;
+using NOSVec3Property = NOSVectorProperty<FVector, "nos.fb.vec3d">;
+using NOSVec4Property = NOSVectorProperty < FVector4, "nos.fb.vec4d">;
+using NOSVec4FProperty = NOSVectorProperty < FVector4f, "nos.fb.vec4">;
 
 class NOSRotatorProperty : public NOSProperty
 {
@@ -495,6 +533,8 @@ public:
 	{
 		data = std::vector<uint8_t>(sizeof(FVector), 0);
 		TypeName = "nos.fb.vec3d";
+		GetByteArrayFromVectorString<FVector>(MinString, min_val);
+		GetByteArrayFromVectorString<FVector>(MaxString, max_val);
 	}
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
 

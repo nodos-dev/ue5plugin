@@ -98,6 +98,8 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		UIMaxString = metaData.Contains(NAME_UIMax) ? metaData[NAME_UIMax] : "";
 		ClampMinString = metaData.Contains(NAME_ClampMin) ? metaData[NAME_ClampMin] : "";
 		ClampMaxString = metaData.Contains(NAME_ClampMax) ? metaData[NAME_ClampMax] : "";
+		MinString = UIMinString.IsEmpty() ? ClampMinString : UIMinString;
+		MaxString = UIMaxString.IsEmpty() ? ClampMaxString : UIMaxString;
 		ToolTipText = metaData.Contains(NAME_ToolTip) ? metaData[NAME_ToolTip] : "";
 		EditConditionPropertyName = metaData.Contains(NAME_EditCondition) ? metaData[NAME_EditCondition] : "";
 		if(!EditConditionPropertyName.IsEmpty())
