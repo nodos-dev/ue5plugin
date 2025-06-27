@@ -218,7 +218,24 @@ public:
 	{
 		data = std::vector<uint8_t>(sizeof(CppType), 0);
 		TypeName = LitType.val;
-	}
+		if constexpr (!std::is_same_v<CppType, bool>)
+		{
+			if (UIMinString.Len())
+			{
+				CppType UIMin = TNumericLimits<CppType>::Lowest();
+				TTypeFromString<CppType>::FromString(UIMin, *UIMinString);
+				min_val = std::vector<uint8_t>(sizeof(CppType), 0);
+				memcpy(min_val.data(), &UIMin, sizeof(CppType));
+			}
+			if (UIMaxString.Len())
+			{
+				CppType UIMax = TNumericLimits<CppType>::Max();
+				TTypeFromString<CppType>::FromString(UIMax, *UIMaxString);
+				max_val = std::vector<uint8_t>(sizeof(CppType), 0);
+				memcpy(max_val.data(), &UIMax, sizeof(CppType));
+			}
+		}
+	}	   
 	T* Property;
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override 
 	{
