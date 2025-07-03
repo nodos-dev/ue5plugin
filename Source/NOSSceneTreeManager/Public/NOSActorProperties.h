@@ -498,7 +498,8 @@ bool GetByteArrayFromVectorString(FString const& VectorString, std::vector<uint8
 			OutBytes = nos::Buffer::From(Value);
 			return true;
 		}
-		typename T::FReal ComponentVal{};
+		
+		std::remove_cvref_t<decltype(T{}[0])> ComponentVal{};
 		if (LexTryParseString(ComponentVal, *VectorString))
 		{
 			OutBytes = nos::Buffer::From(T(ComponentVal));
@@ -524,6 +525,7 @@ using NOSVec2Property = NOSVectorProperty<FVector2D, "nos.fb.vec2d">;
 using NOSVec3Property = NOSVectorProperty<FVector, "nos.fb.vec3d">;
 using NOSVec4Property = NOSVectorProperty < FVector4, "nos.fb.vec4d">;
 using NOSVec4FProperty = NOSVectorProperty < FVector4f, "nos.fb.vec4">;
+using NOSVec2IProperty = NOSVectorProperty < FIntPoint, "nos.fb.vec2i">;
 
 class NOSRotatorProperty : public NOSProperty
 {
