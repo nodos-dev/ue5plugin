@@ -26,11 +26,6 @@ struct Bounds
 	}
 };
 
-std::map<FString, Bounds> PropertyBounds =
-{
-	{ "ScreenPercentage", Bounds(1.f, 0.f, 1.f) }
-};
-
 
 bool PropertyVisibleExp(FProperty* ueproperty)
 {
@@ -182,16 +177,7 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 			nosMetaDataMap.FindOrAdd("Tags").LeftChopInline(1);
 		}
 	}
-
-	if (auto it = PropertyBounds.find(DisplayName); it != PropertyBounds.end())
-	{
-		default_val = it->second.def;
-		min_val = it->second.min;
-		max_val = it->second.max;
-	}
 }
-
-
 
 std::vector<uint8> NOSProperty::UpdatePinValue(uint8* customContainer)
 {
@@ -1463,6 +1449,10 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		else if (structprop->Struct == TBaseStructure<FLinearColor>::Get()) //vec4f
 		{
 			prop = TSharedPtr<NOSProperty>(new NOSVec4FProperty(container, structprop, parentCategory, StructPtr, parentProperty));
+		}
+		else if (structprop->Struct == TBaseStructure<FIntPoint>::Get()) //vec4f
+		{
+			prop = TSharedPtr<NOSProperty>(new NOSVec2IProperty(container, structprop, parentCategory, StructPtr, parentProperty));
 		}
 		else if (structprop->Struct == FNOSTrack::StaticStruct()) //track
 		{
