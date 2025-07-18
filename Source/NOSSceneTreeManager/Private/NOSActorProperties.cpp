@@ -1295,7 +1295,7 @@ std::vector<uint8> NOSEnumProperty::UpdatePinValue(uint8* customContainer)
 		if(EnumPtr && NumericProperty)
 		{
 			uint8* PropData = Property->ContainerPtrToValuePtr<uint8>(container);
-			CurrentName = Enum->GetNameByValue(*PropData).ToString();
+			CurrentName = Enum->GetDisplayNameTextByValue(*PropData).ToString();
 			val = CurrentName;
 		}
 	}
