@@ -313,7 +313,9 @@ public:
 		data = std::vector<uint8_t>(1, 0); 
 		TypeName = "string";
 
-		int EnumSize = Enum->NumEnums();
+		// TODO: -1 for auto-generated _MAX enum entry.
+		//       Remove it when UE stops auto-adding EnumName_MAX to the enums.
+		int EnumSize = Enum->NumEnums() - 1;
 		for(int i = 0; i < EnumSize; i++)
 		{
 			NameMap.Add(Enum->GetDisplayNameTextByIndex(i).ToString(), Enum->GetValueByIndex(i));
