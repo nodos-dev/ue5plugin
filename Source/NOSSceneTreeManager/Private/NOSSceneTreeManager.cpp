@@ -23,6 +23,7 @@
 #include "Misc/MessageDialog.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/Blueprint.h"
+#include "Nodos/UUID.hpp"
 
 DEFINE_LOG_CATEGORY(LogNOSSceneTreeManager);
 #define LOG(x) UE_LOG(LogNOSSceneTreeManager, Display, TEXT(x))
@@ -189,7 +190,7 @@ void FNOSSceneTreeManager::OnEndFrame()
 	fb.Finish(offset);
 	auto buf = fb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	NOSClient->AppServiceClient->Send(root);
 }
 
 void FNOSSceneTreeManager::StartupModule()
@@ -499,7 +500,7 @@ void FNOSSceneTreeManager::OnNOSConnected(nos::fb::Node const* appNode)
 		fb1.Finish(offset);
 		auto buf = fb1.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	}
 	RescanScene();
 	SendNodeUpdate(FNOSClient::NodeId, false);
@@ -670,7 +671,7 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 			{
 				auto& Portal = NOSPropertyManager.PortalPinsById.FindChecked(PortalId);
 				Portal.ShowAs = newShowAs;
-				NOSClient->AppServiceClient->SendPinShowAsChange(reinterpret_cast<nos::fb::UUID&>(PortalId), newShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid(reinterpret_cast<nos::fb::UUID&>(PortalId)), newShowAs);
 				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
 			}
 		}
@@ -687,7 +688,7 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-			NOSClient->AppServiceClient->Send(*root);
+			NOSClient->AppServiceClient->Send(root);
 			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
 		}
 	}
@@ -777,7 +778,7 @@ void FNOSSceneTreeManager::OnNOSContextMenuRequested(nos::app::AppContextMenuReq
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::AppContextMenuUpdate>(buf.data());
-			NOSClient->AppServiceClient->SendContextMenuUpdate(*root);
+			NOSClient->AppServiceClient->SendContextMenuUpdate(root);
 		}
 	}
 	else if(NOSPropertyManager.PortalPinsById.Contains(itemId))
@@ -791,7 +792,7 @@ void FNOSSceneTreeManager::OnNOSContextMenuRequested(nos::app::AppContextMenuReq
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::AppContextMenuUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendContextMenuUpdate(*root);
+		NOSClient->AppServiceClient->SendContextMenuUpdate(root);
 	}
 }
 
@@ -1197,7 +1198,7 @@ void FNOSSceneTreeManager::OnActorDetached(AActor* Actor, const AActor* ParentAc
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	}
 	else
 		ActorsToBeAdded.AddUnique(Actor);
@@ -1225,14 +1226,14 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 	fb1.Finish(offset);
 	auto buf = fb1.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	flatbuffers::FlatBufferBuilder fb3;
 	auto offset2 = nos::CreatePartialNodeUpdateDirect(fb3, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES);
 	fb3.Finish(offset2);
 	auto buf2 = fb3.Release();
 	auto root2 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf2.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root2);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root2);
 
 
 	std::vector<const nos::fb::Node*> nodesWithProperty;
@@ -1587,7 +1588,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 						NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 						NewPortals.push_back(NewPortal);
 						NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-						NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
+						NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), update.pinShowAs);
 					}
 				}
 				continue;
@@ -1673,7 +1674,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 				NewPortals.push_back(NewPortal);
 				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), update.pinShowAs);
 			}
 			
 		}
@@ -1696,7 +1697,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		fb2.Finish(offset3);
 		auto buf3 = fb2.Release();
 		auto root3 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf3.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root3);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root3);
 	}
 	for (auto& Portal : NewPortals)
 	{
@@ -1709,7 +1710,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			fb4.Finish(offset4);
 			auto buf4 = fb4.Release();
 			auto root4 = flatbuffers::GetRoot<nos::app::AppEvent>(buf4.data());
-			NOSClient->AppServiceClient->Send(*root4);
+			NOSClient->AppServiceClient->Send(root4);
 		}
 	}
 	//SendSyncSemaphores(true);
@@ -2241,7 +2242,7 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-			NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+			NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 			return;
 		}
@@ -2269,7 +2270,7 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 		return;
 	}
@@ -2302,7 +2303,7 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendEngineFunctionUpdate()
@@ -2323,7 +2324,7 @@ void FNOSSceneTreeManager::SendEngineFunctionUpdate()
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendPinValueChanged(FGuid propertyId, std::vector<uint8> data)
@@ -2338,7 +2339,7 @@ void FNOSSceneTreeManager::SendPinValueChanged(FGuid propertyId, std::vector<uin
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
-	NOSClient->AppServiceClient->NotifyPinValueChanged(*root);
+	NOSClient->AppServiceClient->NotifyPinValueChanged(root);
 }
 
 void FNOSSceneTreeManager::SendPinUpdate()
@@ -2364,7 +2365,7 @@ void FNOSSceneTreeManager::SendPinUpdate()
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 }
 
@@ -2389,7 +2390,7 @@ void FNOSSceneTreeManager::RemovePortal(FGuid PortalId)
 		auto SourceProp = NOSPropertyManager.PropertiesById.FindRef(Portal.SourceId);
 		SourceProp->PinShowAs = nos::fb::ShowAs::PROPERTY;
 		NOSTextureShareManager::GetInstance()->UpdatePinShowAs(SourceProp.Get(), SourceProp->PinShowAs);
-		NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)SourceProp->Id, SourceProp->PinShowAs);
+		NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)SourceProp->Id), SourceProp->PinShowAs);
 	}
 	flatbuffers::FlatBufferBuilder mb;
 	std::vector<nos::fb::UUID> pinsToDelete;
@@ -2399,7 +2400,7 @@ void FNOSSceneTreeManager::RemovePortal(FGuid PortalId)
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendPinAdded(FGuid NodeId, TSharedPtr<NOSProperty> const& nosprop)
@@ -2414,7 +2415,7 @@ void FNOSSceneTreeManager::SendPinAdded(FGuid NodeId, TSharedPtr<NOSProperty> co
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	return;
 }
@@ -2466,7 +2467,7 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-			NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+			NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 		}
 	}
 	else
@@ -2492,7 +2493,7 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	}
 }
@@ -2633,7 +2634,7 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	}
 
 	flatbuffers::FlatBufferBuilder mb2;
@@ -2642,7 +2643,7 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 	mb2.Finish(offset);
 	auto buf = mb2.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendActorDeletedOnUpdate(AActor* actor)
@@ -2681,7 +2682,7 @@ void FNOSSceneTreeManager::SendParentChanged(FGuid Actor, FGuid ParentActor)
 	fb.Finish(offset);
 	auto buf = fb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	NOSClient->AppServiceClient->Send(root);
 }
 
 void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor)
@@ -2779,7 +2780,7 @@ void FNOSSceneTreeManager::SendSyncSemaphores(bool RenewSemaphores)
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	NOSClient->AppServiceClient->Send(root);
 }
 
 struct PortalSourceContainerInfo
@@ -2853,7 +2854,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	PinUpdates.clear();
 
 	NOSPropertyManager.Reset(false);
@@ -2899,7 +2900,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 			portal.SourceId = NosProperty->Id;
 			NosProperty->PinShowAs = portal.ShowAs;
 			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
-			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, NosProperty->PinShowAs);
+			NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), NosProperty->PinShowAs);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, portal.Id);
 			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(mbb, nos::fb::PinOrphanStateType::ACTIVE, "Object not found in the world")));
 		}
@@ -2915,7 +2916,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		mbb.Finish(offset1);
 		auto buf1 = mbb.Release();
 		auto root1 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf1.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root1);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root1);
 	}
 	if(!PinsToRemove.empty())
 	{
@@ -2924,7 +2925,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		mb2.Finish(offset2);
 		auto buf2 = mb2.Release();
 		auto root2 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf2.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root2);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root2);
 	}
 
 	LOG("World change handled");
@@ -3082,7 +3083,7 @@ AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters P
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	{
 		// auto portal location / rotation / scale if given
@@ -3150,7 +3151,7 @@ AActor* FNOSActorManager::SpawnUMGRenderManager(FString umgTag, UUserWidget* wid
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	return UMGManager;
 }
@@ -3314,7 +3315,7 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 	}
 
 	NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NOSProperty.Get(), ShowAs);
-	NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NOSProperty->Id, ShowAs);
+	NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NOSProperty->Id), ShowAs);
 	
 	NOSPortal NewPortal{StringToFGuid(NOSProperty->Id.ToString()) ,PropertyId};
 	NewPortal.DisplayName = FString("");
@@ -3395,7 +3396,7 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSPropertyManager::CreatePortal(FProperty* uproperty, UObject* Container, nos::fb::ShowAs ShowAs)

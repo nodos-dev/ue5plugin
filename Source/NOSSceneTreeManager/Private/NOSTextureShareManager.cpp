@@ -329,7 +329,7 @@ void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, TSharedPtr<Sh
 				mb.Finish(offset2);
 				auto buf = mb.Release();
 				auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
-				TextureShareManager->NOSClient->AppServiceClient->NotifyPinValueChanged(*root);
+				TextureShareManager->NOSClient->AppServiceClient->NotifyPinValueChanged(root);
 			}
 		 }
 			

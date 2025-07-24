@@ -335,7 +335,7 @@ public:
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::UpdateStringList>(buf.data());
 		auto NOSClient = &FModuleManager::LoadModuleChecked<FNOSClient>("NOSClient");
-		NOSClient->AppServiceClient->UpdateStringList(*root);
+		NOSClient->AppServiceClient->UpdateStringList(root);
 	}
 
 	FString NodosListName;
