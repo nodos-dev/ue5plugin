@@ -3,7 +3,7 @@
 //Nodos plugin includes
 #include "NOSSceneTreeManager.h"
 #include "NOSClient.h"
-#include "NOSTextureShareManager.h"
+#include "NOSResourceShareManager.h"
 #include "NOSAssetManager.h"
 #include "NOSViewportManager.h"
 #include "ARenderTargetViewer.h"
@@ -122,21 +122,21 @@ void FNOSSceneTreeManager::OnBeginFrame()
 	{
 		ToggleExecutionStateToSynced = false;
 		ExecutionState = nos::app::ExecutionState::SYNCED;
-		if (NOSTextureShareManager::GetInstance()->SwitchStateToSynced())
+		if (NOSResourceShareManager::GetInstance()->SwitchStateToSynced())
 		{
 			SendSyncSemaphores(false);
 		}
 	}
 	
 	NOSPropertyManager.OnBeginFrame();
-	NOSTextureShareManager::GetInstance()->OnBeginFrame();
+	NOSResourceShareManager::GetInstance()->OnBeginFrame();
 }
 
 void FNOSSceneTreeManager::OnEndFrame()
 {
 	NOSPropertyManager.OnEndFrame();
-	auto frameCount = NOSTextureShareManager::GetInstance()->FrameCounter;
-	NOSTextureShareManager::GetInstance()->OnEndFrame();
+	auto frameCount = NOSResourceShareManager::GetInstance()->FrameCounter;
+	NOSResourceShareManager::GetInstance()->OnEndFrame();
 
 
 	flatbuffers::FlatBufferBuilder fb;
@@ -531,7 +531,7 @@ void FNOSSceneTreeManager::OnNOSNodeUpdated(nos::fb::Node const& appNode)
 		SendNodeUpdate(FNOSClient::NodeId);
 		//SendSyncSemaphores(true);
 	}
-	auto texman = NOSTextureShareManager::GetInstance();
+	auto texman = NOSResourceShareManager::GetInstance();
 	for (auto& [id, pin] : ParsePins(&appNode))
 	{
 		if (texman->PendingCopyQueue.Contains(id))
@@ -630,7 +630,7 @@ void FNOSSceneTreeManager::OnNOSConnectionClosed()
 	if(ExecutionState == nos::app::ExecutionState::SYNCED)
 	{
 		ExecutionState = nos::app::ExecutionState::IDLE;
-		NOSTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
+		NOSResourceShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
 	}
 }
 
@@ -678,7 +678,7 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 				auto& Portal = NOSPropertyManager.PortalPinsById.FindChecked(PortalId);
 				Portal.ShowAs = newShowAs;
 				NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid(reinterpret_cast<nos::fb::UUID&>(PortalId)), newShowAs);
-				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
+				NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
 			}
 		}
 	}
@@ -695,7 +695,7 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
 			NOSClient->AppServiceClient->Send(root);
-			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
+			NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
 		}
 	}
 }
@@ -827,7 +827,7 @@ void FNOSSceneTreeManager::OnNOSContextMenuCommandFired(nos::app::AppContextMenu
 void FNOSSceneTreeManager::OnNOSNodeRemoved()
 {
 	NOSActorManager->ClearActors();
-	NOSTextureShareManager::GetInstance()->Reset();
+	NOSResourceShareManager::GetInstance()->Reset();
 	NOSClient->ReloadingLevel = CVarReloadLevelFrameCount.GetValueOnAnyThread();
 	ReloadCurrentMap();
 }
@@ -843,7 +843,7 @@ void FNOSSceneTreeManager::OnNOSStateChanged_GRPCThread(nos::app::ExecutionState
 		else if (newState == nos::app::ExecutionState::IDLE)
 		{
 			ExecutionState = newState;
-			NOSTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
+			NOSResourceShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
 		}
 	}
 }
@@ -1593,8 +1593,8 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 						NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
 						NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 						NewPortals.push_back(NewPortal);
-						NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-						NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), update.pinShowAs);
+						NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
+						NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 					}
 				}
 				continue;
@@ -1679,8 +1679,8 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
 				NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 				NewPortals.push_back(NewPortal);
-				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-				NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), update.pinShowAs);
+				NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 			}
 			
 		}
@@ -2395,8 +2395,8 @@ void FNOSSceneTreeManager::RemovePortal(FGuid PortalId)
 	{
 		auto SourceProp = NOSPropertyManager.PropertiesById.FindRef(Portal.SourceId);
 		SourceProp->PinShowAs = nos::fb::ShowAs::PROPERTY;
-		NOSTextureShareManager::GetInstance()->UpdatePinShowAs(SourceProp.Get(), SourceProp->PinShowAs);
-		NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)SourceProp->Id), SourceProp->PinShowAs);
+		NOSResourceShareManager::GetInstance()->UpdatePinShowAs(SourceProp.Get(), SourceProp->PinShowAs);
+		NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)SourceProp->Id, SourceProp->PinShowAs);
 	}
 	flatbuffers::FlatBufferBuilder mb;
 	std::vector<nos::fb::UUID> pinsToDelete;
@@ -2551,7 +2551,7 @@ void FNOSSceneTreeManager::CheckPins(TSet<UObject*>& RemovedObjects,
 
 void FNOSSceneTreeManager::Reset()
 {
-	NOSTextureShareManager::GetInstance()->Reset();
+	NOSResourceShareManager::GetInstance()->Reset();
 	ActorsToBeAdded.Empty();
 	SceneTree.Clear();
 	Pins.Empty();
@@ -2570,7 +2570,7 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 	RemoveProperties(node, propertiesToRemove);
 	TSet<FGuid> PropertiesWithPortals;
 	TSet<FGuid> PortalsToRemove;
-	auto texman = NOSTextureShareManager::GetInstance();
+	auto texman = NOSResourceShareManager::GetInstance();
 	for (auto prop : propertiesToRemove)
 	{
 		if(prop->TypeName == "nos.sys.vulkan.Texture")
@@ -2772,7 +2772,7 @@ void FNOSSceneTreeManager::SendSyncSemaphores(bool RenewSemaphores)
 	{
 		UE_LOG(LogNOSSceneTreeManager, Error, TEXT("Sending sync semaphores with non-valid node Id, a deadlock might happen!"));
 	}
-	auto TextureShareManager = NOSTextureShareManager::GetInstance();
+	auto TextureShareManager = NOSResourceShareManager::GetInstance();
 	if(RenewSemaphores)
 	{
 		TextureShareManager->RenewSemaphores();
@@ -2802,7 +2802,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 {
 	LOG("Handling world change.");
 	SceneTree.Clear();
-	NOSTextureShareManager::GetInstance()->Reset();
+	NOSResourceShareManager::GetInstance()->Reset();
 
 	TArray<TTuple<PortalSourceContainerInfo, NOSPortal>> Portals;
 	TSet<FGuid> ActorsToRescan;
@@ -2905,8 +2905,8 @@ void FNOSSceneTreeManager::HandleWorldChange()
 			}
 			portal.SourceId = NosProperty->Id;
 			NosProperty->PinShowAs = portal.ShowAs;
-			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
-			NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), NosProperty->PinShowAs);
+			NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
+			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, NosProperty->PinShowAs);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, portal.Id);
 			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(mbb, nos::fb::PinOrphanStateType::ACTIVE, "Object not found in the world")));
 		}
@@ -3320,8 +3320,8 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 		}
 	}
 
-	NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NOSProperty.Get(), ShowAs);
-	NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NOSProperty->Id), ShowAs);
+	NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NOSProperty.Get(), ShowAs);
+	NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NOSProperty->Id, ShowAs);
 	
 	NOSPortal NewPortal{StringToFGuid(NOSProperty->Id.ToString()) ,PropertyId};
 	NewPortal.DisplayName = FString("");
@@ -3513,7 +3513,7 @@ void FNOSPropertyManager::OnBeginFrame()
 {
 	if (NOSClient->EventDelegates)
 	{
-		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter);
+		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSResourceShareManager::GetInstance()->FrameCounter);
 		for (auto& [id, val] : executeInfo.PinValueUpdates)
 		{
 			FGuid guid = *(FGuid*)&id;
@@ -3544,7 +3544,7 @@ void FNOSPropertyManager::OnBeginFrame()
 
 		if (portal.TypeName == "nos.sys.vulkan.Texture")
 		{
-			NOSTextureShareManager::GetInstance()->UpdateTexturePin(NosProperty.Get(), portal.ShowAs);
+			NOSResourceShareManager::GetInstance()->UpdateTexturePin(NosProperty.Get(), portal.ShowAs);
 			continue;
 		}
 	}
