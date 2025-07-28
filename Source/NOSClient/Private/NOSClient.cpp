@@ -828,6 +828,7 @@ void FNOSClient::ShutdownModule()
 	{
 		FNodos::ShutdownClient(AppServiceClient->Client);
 	}
+	delete AppServiceClient;
 	AppServiceClient = nullptr;
 	FNodos::Shutdown();
 
