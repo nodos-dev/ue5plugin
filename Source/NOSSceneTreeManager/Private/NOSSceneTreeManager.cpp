@@ -301,10 +301,12 @@ void FNOSSceneTreeManager::StartupModule()
 				alwaysUpdateOnActorSpawnData.push_back(AlwaysUpdateOnActorSpawns ? 1 : 0);
 				std::vector<uint8_t> showHiddenActorsData;
 				showHiddenActorsData.push_back(ShowHiddenActorsOnNodos ? 1 : 0);
+				auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+				std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
 				std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&alwaysUpdateId, TCHAR_TO_ANSI(TEXT("Always Update Scene Outliner")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &alwaysUpdateOnActorSpawnData, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&alwaysUpdateId, TCHAR_TO_ANSI(TEXT("Always Update Scene Outliner")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &alwaysUpdateOnActorSpawnData, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 					"Update scene outliner when an actor is spawned instead of waiting for refreshing.\nDecreases performance for dynamic scenes."),
-					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&showHiddenActorsId, TCHAR_TO_ANSI(TEXT("Show Hidden Actors")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &showHiddenActorsData, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&showHiddenActorsId, TCHAR_TO_ANSI(TEXT("Show Hidden Actors")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &showHiddenActorsData, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 					"Show hidden Unreal actors on Nodos Scene Outliner")
 				};
 				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Refresh Scene Outliner", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
@@ -339,9 +341,11 @@ void FNOSSceneTreeManager::StartupModule()
 			std::string empty = "None";
 			auto data = std::vector<uint8_t>(empty.begin(), empty.end());
 			data.push_back(0);
-			
+
+			auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+			std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
 			std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Actor List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_ACTOR_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin),
+				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Actor List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_ACTOR_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin),
 			};
 			FillSpawnActorFunctionTransformPins(fbb, spawnPins, PinIds);
 			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Actor", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
@@ -384,9 +388,11 @@ void FNOSSceneTreeManager::StartupModule()
 			std::string empty = "None";
 			auto data = std::vector<uint8_t>(empty.begin(), empty.end());
 			data.push_back(0);
-			
+
+			auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+			std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
 			std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Render Target List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_RENDER_TARGET_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin),
+				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Render Target List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_RENDER_TARGET_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin),
 			};
 			FillSpawnActorFunctionTransformPins(fbb, spawnPins, PinIds);
 			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Render Target Viewer Actor", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");

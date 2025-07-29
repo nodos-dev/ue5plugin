@@ -679,6 +679,8 @@ std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> NOSProperty::SerializeM
 	{
 		metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, TCHAR_TO_UTF8(*key), TCHAR_TO_UTF8(*value)));
 	}
+	metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, TCHAR_TO_UTF8(*CategoryName)));
+	metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_ADVANCED_PROPERTY, IsAdvanced ? "true" : "false"));
 	return metadata;
 }
 

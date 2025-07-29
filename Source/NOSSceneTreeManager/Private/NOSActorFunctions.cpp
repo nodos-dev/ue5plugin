@@ -2,7 +2,7 @@
 
 #include "NOSActorFunctions.h"
 #include "NOSSceneTreeManager.h"
-
+#include <Nodos/Nodos.h>
 
 NOSFunction::NOSFunction(UObject* container, UFunction* function)
 {
@@ -49,29 +49,31 @@ void FillSpawnActorFunctionTransformPins(flatbuffers::FlatBufferBuilder& Fbb,
 	std::vector<flatbuffers::Offset<nos::fb::Pin>>& SpawnPins,
 	NOSSpawnActorFunctionPinIds const& PinIds)
 {
+	auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(Fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+	std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
 	SpawnPins.push_back(nos::fb::CreatePinDirect(Fbb, (nos::fb::UUID*)&PinIds.SpawnToWorldCoordsPinId,
 	                                            TCHAR_TO_ANSI(TEXT("Spawn To World Coordinates")),
 	                                            TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY,
 	                                            nos::fb::CanShowAs::PROPERTY_ONLY, 0, 0, 0, 0, 0, 0, 0, 0,
-	                                            0, 0, 0, nos::fb::PinContents::JobPin, 0, 0,
+	                                            0, &metadataEntries, 0, nos::fb::PinContents::JobPin, 0, 0,
 	                                            nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 	                                            "Set actor spawn transform with respect to the world transform. If set to false, it keeps the relative transform with respect to the parent actor."));
 
 	SpawnPins.push_back(nos::fb::CreatePinDirect(Fbb, (nos::fb::UUID*)&PinIds.SpawnLocationPinId,
 												TCHAR_TO_ANSI(TEXT("Spawn Location")),
 												TCHAR_TO_ANSI(TEXT("nos.fb.vec3d")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, 0, 0, 0, 0, 0, 0, 0,
-												0, 0, 0, nos::fb::PinContents::JobPin));
+												0, &metadataEntries, 0, nos::fb::PinContents::JobPin));
 	
 	SpawnPins.push_back(nos::fb::CreatePinDirect(Fbb, (nos::fb::UUID*)&PinIds.SpawnRotationPinId,
 													TCHAR_TO_ANSI(TEXT("Spawn Rotation")),
 													TCHAR_TO_ANSI(TEXT("nos.fb.vec3d")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, 0, 0, 0, 0, 0, 0, 0,
-													0, 0, 0, nos::fb::PinContents::JobPin));
+													0, &metadataEntries, 0, nos::fb::PinContents::JobPin));
 	FVector3d SpawnScale = FVector3d(1, 1, 1);
 	std::vector<uint8_t> SpawnScaleData((uint8_t*)&SpawnScale, (uint8_t*)&SpawnScale + sizeof(FVector3d));
 	SpawnPins.push_back(nos::fb::CreatePinDirect(Fbb, (nos::fb::UUID*)&PinIds.SpawnScalePinId,
 													TCHAR_TO_ANSI(TEXT("Spawn Scale")),
 													TCHAR_TO_ANSI(TEXT("nos.fb.vec3d")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &SpawnScaleData, 0, 0, 0, 0, 0, 0,
-													0, 0, 0, nos::fb::PinContents::JobPin));
+													0, &metadataEntries, 0, nos::fb::PinContents::JobPin));
 }
 
 NOSSpawnActorParameters GetSpawnActorParameters(TMap<FGuid, std::vector<uint8>> const& Pins, NOSSpawnActorFunctionPinIds const& PinIds)
