@@ -137,7 +137,7 @@ nosBufferInfo GetBufferInfo(NOSProperty* nosprop)
 		return info;
 	}
 
-	info.Size = buf->InitialSize;
+	info.Size = buf->RequestedSize;
 	return info;
 }
 
@@ -258,24 +258,46 @@ bool NOSResourceShareManager::CreateBufferResource(NOSProperty* nosprop, nos::sy
 	nosBufferInfo info = GetBufferInfo(nosprop);
 	UObject* obj = nosprop->GetRawObjectContainer();
 	FObjectProperty* prop = CastField<FObjectProperty>(nosprop->Property);
-	UNOSGPUBuffer* srcBuffer = Cast<UNOSGPUBuffer>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UNOSGPUBuffer>(obj)));
-	if(!srcBuffer)
+	UNOSGPUBuffer* SrcBuffer = Cast<UNOSGPUBuffer>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UNOSGPUBuffer>(obj)));
+	if(!SrcBuffer)
 	{
 		nosprop->IsOrphan = true;
 		nosprop->OrphanMessage = "No buffer resource bound to property!";
 		return false;
 	}
+
+	if (!SrcBuffer->IsCreated())
+	{
+		// Initialize the buffer on the render thread
+		ENQUEUE_RENDER_COMMAND(InitializeNOSBuffer)(
+			[SrcBuffer, info, nosprop](FRHICommandListImmediate& RHICmdList)
+			{
+				// Initialize the new buffer with the same properties as the source
+				// Add BUF_Shared flag to enable resource sharing across processes
+				SrcBuffer->Buffer.Initialize(
+					RHICmdList,
+					*nosprop->DisplayName,
+					1,
+					info.Size,
+					PF_R32_UINT, // Format
+					ERHIAccess::UAVMask,
+					BUF_UnorderedAccess | BUF_ShaderResource
+				);
+			});
+
+		FlushRenderingCommands();
+	}
 	
-	UNOSGPUBuffer* NewBufferHolder = NewObject<UNOSGPUBuffer>(GetTransientPackage(), *(nosprop->DisplayName +FGuid::NewGuid().ToString()), RF_MarkAsRootSet);
-	check(NewBufferHolder);
+	UNOSGPUBuffer* SharedBuffer = NewObject<UNOSGPUBuffer>(GetTransientPackage(), *(nosprop->DisplayName +FGuid::NewGuid().ToString()), RF_MarkAsRootSet);
+	check(SharedBuffer);
 
 	// Initialize the buffer on the render thread
 	ENQUEUE_RENDER_COMMAND(InitializeNOSBuffer)(
-		[NewBufferHolder, info, nosprop](FRHICommandListImmediate& RHICmdList)
+		[SharedBuffer, info, nosprop](FRHICommandListImmediate& RHICmdList)
 		{
 			// Initialize the new buffer with the same properties as the source
 			// Add BUF_Shared flag to enable resource sharing across processes
-			NewBufferHolder->Buffer.Initialize(
+			SharedBuffer->Buffer.Initialize(
 				RHICmdList,
 				*nosprop->DisplayName,
 				1,
@@ -289,7 +311,7 @@ bool NOSResourceShareManager::CreateBufferResource(NOSProperty* nosprop, nos::sy
 	FlushRenderingCommands();
 
 	// Get the D3D12 resource from the RHI buffer
-	FRHIBuffer* RHIBuffer = NewBufferHolder->Buffer.Buffer;
+	FRHIBuffer* RHIBuffer = SharedBuffer->Buffer.Buffer;
 	if (!RHIBuffer || !RHIBuffer->IsValid())
 	{
 		return false;
@@ -306,6 +328,7 @@ bool NOSResourceShareManager::CreateBufferResource(NOSProperty* nosprop, nos::sy
 	// Set up the Vulkan buffer structure
 	Buffer.mutate_size_in_bytes(info.Size);
 	Buffer.mutate_usage(nos::sys::vulkan::BufferUsage(info.Usage));
+	Buffer.mutate_field_type(nos::sys::vulkan::FieldType::PROGRESSIVE);
 	auto& Ext = Buffer.mutable_external_memory();
 	Ext.mutate_handle_type(NOS_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE);
 	Ext.mutate_handle((uint64_t)handle);
@@ -316,7 +339,7 @@ bool NOSResourceShareManager::CreateBufferResource(NOSProperty* nosprop, nos::sy
 
 	// Set up the shared resource info
 	Resource.SrcNosp = nosprop;
-	Resource.DstBuffer = NewBufferHolder;
+	Resource.DstBuffer = SharedBuffer;
 	Resource.ShowAs = nosprop->PinShowAs;
 	Resource.SharedHandle = handle;
 
@@ -470,7 +493,7 @@ void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, TSharedPtr<Sh
 		else if (Buffer)
 		{
 			auto existingBytes = info->DstBuffer->Buffer.NumBytes;
-			if (existingBytes != Buffer->InitialSize)
+			if (existingBytes != Buffer->GetBufferSize())
 			{
 				nos::sys::vulkan::Buffer* buf = reinterpret_cast<nos::sys::vulkan::Buffer*>(nosprop->data.data());
 				if (TextureShareManager->UpdateBufferPin(nosprop, *buf))

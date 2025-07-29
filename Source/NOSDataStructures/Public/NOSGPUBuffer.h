@@ -12,6 +12,8 @@ class NOSDATASTRUCTURES_API UNOSGPUBuffer : public UObject
 	GENERATED_BODY()
 
 public:
+	bool IsCreated() const;
+	size_t GetBufferSize() const;
 	FRWBuffer Buffer;
-	size_t InitialSize = 100000;
+	size_t RequestedSize = 10000;
 };
