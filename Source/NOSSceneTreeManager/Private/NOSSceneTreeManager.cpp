@@ -1594,7 +1594,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 						NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 						NewPortals.push_back(NewPortal);
 						NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-						NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
+						NOSClient->AppServiceClient->SendPinShowAsChange((nosUUID&)NosProperty->Id, update.pinShowAs);
 					}
 				}
 				continue;
@@ -1680,7 +1680,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 				NewPortals.push_back(NewPortal);
 				NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange((nosUUID&)NosProperty->Id, update.pinShowAs);
 			}
 			
 		}
@@ -2396,7 +2396,7 @@ void FNOSSceneTreeManager::RemovePortal(FGuid PortalId)
 		auto SourceProp = NOSPropertyManager.PropertiesById.FindRef(Portal.SourceId);
 		SourceProp->PinShowAs = nos::fb::ShowAs::PROPERTY;
 		NOSResourceShareManager::GetInstance()->UpdatePinShowAs(SourceProp.Get(), SourceProp->PinShowAs);
-		NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)SourceProp->Id, SourceProp->PinShowAs);
+		NOSClient->AppServiceClient->SendPinShowAsChange((nosUUID&)SourceProp->Id, SourceProp->PinShowAs);
 	}
 	flatbuffers::FlatBufferBuilder mb;
 	std::vector<nos::fb::UUID> pinsToDelete;
@@ -2906,7 +2906,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 			portal.SourceId = NosProperty->Id;
 			NosProperty->PinShowAs = portal.ShowAs;
 			NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
-			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, NosProperty->PinShowAs);
+			NOSClient->AppServiceClient->SendPinShowAsChange((nosUUID&)NosProperty->Id, NosProperty->PinShowAs);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, portal.Id);
 			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(mbb, nos::fb::PinOrphanStateType::ACTIVE, "Object not found in the world")));
 		}
@@ -3321,7 +3321,7 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 	}
 
 	NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NOSProperty.Get(), ShowAs);
-	NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NOSProperty->Id, ShowAs);
+	NOSClient->AppServiceClient->SendPinShowAsChange((nosUUID&)NOSProperty->Id, ShowAs);
 	
 	NOSPortal NewPortal{StringToFGuid(NOSProperty->Id.ToString()) ,PropertyId};
 	NewPortal.DisplayName = FString("");
