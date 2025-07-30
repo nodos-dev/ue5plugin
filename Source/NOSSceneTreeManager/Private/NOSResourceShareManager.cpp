@@ -137,7 +137,7 @@ nosBufferInfo GetBufferInfo(NOSProperty* nosprop)
 		return info;
 	}
 
-	info.Size = buf->RequestedSize;
+	info.Size = buf->GetBufferSize();
 	return info;
 }
 
@@ -268,50 +268,17 @@ bool NOSResourceShareManager::CreateBufferResource(NOSProperty* nosprop, nos::sy
 
 	if (!SrcBuffer->IsCreated())
 	{
-		// Initialize the buffer on the render thread
-		ENQUEUE_RENDER_COMMAND(InitializeNOSBuffer)(
-			[SrcBuffer, info, nosprop](FRHICommandListImmediate& RHICmdList)
-			{
-				// Initialize the new buffer with the same properties as the source
-				// Add BUF_Shared flag to enable resource sharing across processes
-				SrcBuffer->Buffer.Initialize(
-					RHICmdList,
-					*nosprop->DisplayName,
-					1,
-					info.Size,
-					PF_R32_UINT, // Format
-					ERHIAccess::UAVMask,
-					BUF_UnorderedAccess | BUF_ShaderResource
-				);
-			});
-
-		FlushRenderingCommands();
+		SrcBuffer->AllocateBlocking(info.Size, *nosprop->DisplayName);
 	}
 	
 	UNOSGPUBuffer* SharedBuffer = NewObject<UNOSGPUBuffer>(GetTransientPackage(), *(nosprop->DisplayName +FGuid::NewGuid().ToString()), RF_MarkAsRootSet);
 	check(SharedBuffer);
 
 	// Initialize the buffer on the render thread
-	ENQUEUE_RENDER_COMMAND(InitializeNOSBuffer)(
-		[SharedBuffer, info, nosprop](FRHICommandListImmediate& RHICmdList)
-		{
-			// Initialize the new buffer with the same properties as the source
-			// Add BUF_Shared flag to enable resource sharing across processes
-			SharedBuffer->Buffer.Initialize(
-				RHICmdList,
-				*nosprop->DisplayName,
-				1,
-				info.Size,
-				PF_R32_UINT, // Format
-				ERHIAccess::UAVMask,
-				BUF_UnorderedAccess | BUF_ShaderResource | BUF_Shared
-			);
-		});
-
-	FlushRenderingCommands();
+	SharedBuffer->AllocateBlocking(info.Size, *nosprop->DisplayName, BUF_UnorderedAccess | BUF_ShaderResource | BUF_Shared);
 
 	// Get the D3D12 resource from the RHI buffer
-	FRHIBuffer* RHIBuffer = SharedBuffer->Buffer.Buffer;
+	FRHIBuffer* RHIBuffer = SharedBuffer->GetUnderlyingBuffer();
 	if (!RHIBuffer || !RHIBuffer->IsValid())
 	{
 		return false;
@@ -492,7 +459,7 @@ void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, TSharedPtr<Sh
 		}
 		else if (Buffer)
 		{
-			auto existingBytes = info->DstBuffer->Buffer.NumBytes;
+			auto existingBytes = info->DstBuffer->GetBufferSize();
 			if (existingBytes != Buffer->GetBufferSize())
 			{
 				nos::sys::vulkan::Buffer* buf = reinterpret_cast<nos::sys::vulkan::Buffer*>(nosprop->data.data());
@@ -608,8 +575,8 @@ void NOSResourceShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOS
 				}
 				else if (auto Buffer = Cast<UNOSGPUBuffer>(obj))
 				{
-					FRHIBuffer* dst = pin->DstBuffer->Buffer.Buffer;
-					FRHIBuffer* src = Buffer->Buffer.Buffer;
+					FRHIBuffer* dst = pin->DstBuffer->GetUnderlyingBuffer();
+					FRHIBuffer* src = Buffer->GetUnderlyingBuffer();
 					if(CopyShowAs == nos::fb::ShowAs::INPUT_PIN)
 					{
 						Swap(dst, src);
@@ -770,6 +737,6 @@ SharedResourceInfo::~SharedResourceInfo()
 	}
 	if (DstBuffer)
 	{
-		DstBuffer->Buffer.Release();
+		DstBuffer->Release();
 	}
 }

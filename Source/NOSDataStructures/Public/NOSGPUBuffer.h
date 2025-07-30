@@ -14,6 +14,11 @@ class NOSDATASTRUCTURES_API UNOSGPUBuffer : public UObject
 public:
 	bool IsCreated() const;
 	size_t GetBufferSize() const;
+	void AllocateBlocking(size_t SizeInBytes, const TCHAR* DebugName,
+		EBufferUsageFlags UsageFlags = BUF_UnorderedAccess | BUF_ShaderResource,
+		EPixelFormat Format = PF_R32_UINT,
+		ERHIAccess ResourceState = ERHIAccess::UAVMask);
+	void Release() { Buffer.Release(); }
+	FBufferRHIRef const& GetUnderlyingBuffer() const { return Buffer.Buffer; }
 	FRWBuffer Buffer;
-	size_t RequestedSize = 10000;
 };
