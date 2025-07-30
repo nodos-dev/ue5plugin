@@ -132,7 +132,6 @@ std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::sys::vulkan::TTextu
 	HANDLE handle = 0;
 	NOS_D3D12_ASSERT_SUCCESS(device.CreateSharedHandle(DXResource, 0, GENERIC_ALL, 0, &handle));
 	nos::sys::vulkan::TTexture retTexture;
-	retTexture.resolution = nos::sys::vulkan::SizePreset::CUSTOM;
 	retTexture.width = info.Width;
 	retTexture.height = info.Height;
 	retTexture.format = nos::sys::vulkan::Format(info.Format);
@@ -143,9 +142,6 @@ std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::sys::vulkan::TTextu
 	D3D12_RESOURCE_DESC desc = DXResource->GetDesc();
 	Ext.mutate_allocation_size(device.GetResourceAllocationInfo(0, 1, &desc).SizeInBytes);
 	Ext.mutate_pid(FPlatformProcess::GetCurrentProcessId());
-	retTexture.unmanaged = true;
-	retTexture.unscaled = true;
-	retTexture.handle = 0;
 
 	auto sharedInfo = MakeShared<SharedResourceInfo>();
 
@@ -206,7 +202,7 @@ void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
 			mb.Finish(offset2);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
-			NOSClient->AppServiceClient->NotifyPinValueChanged(*root);
+			NOSClient->AppServiceClient->NotifyPinValueChanged(root);
 		}
 	}
 }
@@ -267,7 +263,7 @@ std::optional<nos::sys::vulkan::TTexture> NOSTextureShareManager::GetUpdatedText
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-			NOSClient->AppServiceClient->Send(*root);
+			NOSClient->AppServiceClient->Send(root);
 		};
 
 	if (propertyRenderTarget)

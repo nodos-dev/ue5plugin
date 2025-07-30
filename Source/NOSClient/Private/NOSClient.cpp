@@ -43,8 +43,8 @@ FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 
 void* FNodos::LibHandle = nullptr;
-nos::app::FN_MakeAppServiceClient* FNodos::MakeAppServiceClient = nullptr;
-nos::app::FN_ShutdownClient* FNodos::ShutdownClient = nullptr;
+FN_MakeAppServiceClient FNodos::MakeAppServiceClient = nullptr;
+FN_ShutdownClient FNodos::ShutdownClient = nullptr;
 
 FString FNodos::GetNodosSDKDir()
 {
@@ -63,7 +63,7 @@ FString FNodos::GetNodosSDKDir()
 	{
 		return "";
 	}
-	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.5.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
+	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 20.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
 	LOGF("Nodos SDK path is %s", *OutResults);
 
 	TSharedPtr<FJsonObject> SDKInfoJsonParsed;
@@ -110,7 +110,7 @@ bool FNodos::Initialize()
 		return false;
 	}
 
-	auto CheckCompatible = (nos::app::FN_CheckSDKCompatibility*)FPlatformProcess::GetDllExport(LibHandle, TEXT("CheckSDKCompatibility"));
+	auto CheckCompatible = (FN_CheckSDKCompatibility)FPlatformProcess::GetDllExport(LibHandle, TEXT("CheckSDKCompatibility"));
 	bool IsCompatible = CheckCompatible && CheckCompatible(NOS_APPLICATION_SDK_VERSION_MAJOR, NOS_APPLICATION_SDK_VERSION_MINOR, NOS_APPLICATION_SDK_VERSION_PATCH);
 	if (!IsCompatible)
 	{
@@ -118,8 +118,8 @@ bool FNodos::Initialize()
 		return false;
 	}
 
-	MakeAppServiceClient = (nos::app::FN_MakeAppServiceClient*)FPlatformProcess::GetDllExport(LibHandle, TEXT("MakeAppServiceClient"));
-	ShutdownClient = (nos::app::FN_ShutdownClient*)FPlatformProcess::GetDllExport(LibHandle, TEXT("ShutdownClient"));
+	MakeAppServiceClient = (FN_MakeAppServiceClient)FPlatformProcess::GetDllExport(LibHandle, TEXT("MakeAppServiceClient"));
+	ShutdownClient = (FN_ShutdownClient)FPlatformProcess::GetDllExport(LibHandle, TEXT("ShutdownClient"));
 	
 	if (!MakeAppServiceClient || !ShutdownClient)
 	{
@@ -341,7 +341,7 @@ void NOSEventDelegates::OnConsoleAutoCompleteSuggestionRequest(
 		    mb.Finish(offset);
 		    auto buf = mb.Release();
 		    auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		    NOSClient->AppServiceClient->Send(*root);
+		    NOSClient->AppServiceClient->Send(root);
 		});
 }
 
@@ -619,14 +619,15 @@ void FNOSClient::TryConnect()
 	{
 		auto ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 		auto ExePath = FString(FPlatformProcess::ExecutablePath());
-		AppServiceClient = FNodos::MakeAppServiceClient("localhost:50053", nos::app::ApplicationInfo {
+		auto appInfo = nosApplicationInfo{
 			.AppKey = TCHAR_TO_UTF8(*FNOSClient::AppKey),
 			.AppName = "UE5"
-		});
+		};
+		AppServiceClient = new nos::app::AppServiceClient(FNodos::MakeAppServiceClient("localhost:50053", &appInfo));
 		EventDelegates = TSharedPtr<NOSEventDelegates>(new NOSEventDelegates());
 		EventDelegates->PluginClient = this;
 		UENodeStatusHandler.SetClient(this);
-		AppServiceClient->RegisterEventDelegates(EventDelegates.Get());
+		AppServiceClient->RegisterEventDelegates(&EventDelegates.Get()->Delegates);
 		LOG("AppClient instance is created");
 	}
 
@@ -768,8 +769,9 @@ void FNOSClient::ShutdownModule()
 	NOSTimeStep = nullptr;
 	if(FNodos::ShutdownClient)
 	{
-		FNodos::ShutdownClient(AppServiceClient);
+		FNodos::ShutdownClient(AppServiceClient->Client);
 	}
+	delete AppServiceClient;
 	AppServiceClient = nullptr;
 	FNodos::Shutdown();
 
@@ -989,7 +991,7 @@ void UENodeStatusHandler::SendStatus()
 	Builder.Finish(offset);
 	auto buf = Builder.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	PluginClient->AppServiceClient->Send(*root);
+	PluginClient->AppServiceClient->Send(root);
 
 	Dirty = false;
 }

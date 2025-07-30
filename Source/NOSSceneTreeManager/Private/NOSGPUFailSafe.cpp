@@ -53,7 +53,7 @@ uint32 NOSGPUFailSafeRunnable::Run()
 					mb.Finish(offset);
 					auto buf = mb.Release();
 					auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-					NOSSceneTreeManager->NOSClient->AppServiceClient->Send(*root);
+					NOSSceneTreeManager->NOSClient->AppServiceClient->Send(root);
 				}
 			}
 			else

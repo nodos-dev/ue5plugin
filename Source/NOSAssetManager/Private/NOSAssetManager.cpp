@@ -98,7 +98,7 @@ void FNOSAssetManager::SendList(const char* ListName, const TArray<FString>& Val
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::UpdateStringList>(buf.data());
-	NOSClient->AppServiceClient->UpdateStringList(*root);
+	NOSClient->AppServiceClient->UpdateStringList(root);
 }
 
 void FNOSAssetManager::SendList(const char* ListName, const TAssetNameToPathMap& Value)

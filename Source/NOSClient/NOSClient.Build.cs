@@ -165,7 +165,7 @@ public class NOSClient : ModuleRules
 			System.Diagnostics.Process process = new System.Diagnostics.Process();
 			process.StartInfo.FileName = NosmanPath;
 			process.StartInfo.ArgumentList.Add("sdk-info");
-			process.StartInfo.ArgumentList.Add("18.5.0");
+			process.StartInfo.ArgumentList.Add("20.0.0");
 			process.StartInfo.ArgumentList.Add("process");
 			process.StartInfo.UseShellExecute = false;
 			process.StartInfo.WorkingDirectory = Path.Combine(NosmanPath, "..");
@@ -207,7 +207,7 @@ public class NOSClient : ModuleRules
 			NodosSDKDir = SDKdir;
 		}
 
-		string VulkanSubsystemIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.vulkan", "6.0");
+		string VulkanSubsystemIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.vulkan", "8.0");
 		string TrackIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.track", "1.9");
 		string LinoIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.lino", "1.0");
 
