@@ -205,7 +205,9 @@ public:
 	}
 	virtual flatbuffers::Offset<nos::fb::Pin> Serialize(flatbuffers::FlatBufferBuilder& fbb) override
 	{
-		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*PropertyName), "nos.exe", nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::INPUT_PIN_OR_PROPERTY, TCHAR_TO_UTF8(*CategoryName), 0, 0, 0, 0, 0, 0, 0, false, false, true, 0, 0, nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, 0, TCHAR_TO_UTF8(*DisplayName));
+		auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+		std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
+		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*PropertyName), "nos.exe", nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::INPUT_PIN_OR_PROPERTY, 0, 0, 0, 0, 0, 0, 0, false, true, &metadataEntries, 0, nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, 0, TCHAR_TO_UTF8(*DisplayName));
 	};
 	virtual void SetPropValue(void* val, size_t size, uint8* customContainer = nullptr) override;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
@@ -335,7 +337,7 @@ public:
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::UpdateStringList>(buf.data());
 		auto NOSClient = &FModuleManager::LoadModuleChecked<FNOSClient>("NOSClient");
-		NOSClient->AppServiceClient->UpdateStringList(*root);
+		NOSClient->AppServiceClient->UpdateStringList(root);
 	}
 
 	FString NodosListName;

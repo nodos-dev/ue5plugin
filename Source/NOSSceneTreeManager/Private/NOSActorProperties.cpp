@@ -666,10 +666,10 @@ flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBuffer
 	DisplayName = ValidateName(DisplayName);
 	if (TypeName == nos::Generic::GetFullyQualifiedName() || TypeName.size() < 1)
 	{
-		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(), nos::fb::ShowAs::NONE, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, 0, 0, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(), nos::fb::ShowAs::NONE, PinCanShowAs, 0, &data, 0, 0, 0, &default_val, 0, ReadOnly, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 	}
 	bool isTexture = TypeName == nos::sys::vulkan::Texture::GetFullyQualifiedName();
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, &min_val, &max_val, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)  /*If texture and can be output, then it should be live to let auto sync multi out work*/, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, 0, &data, 0, &min_val, &max_val, &default_val, 0, ReadOnly, transient, &metadata, isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)  /*If texture and can be output, then it should be live to let auto sync multi out work*/, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 }
 
 std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> NOSProperty::SerializeMetaData(flatbuffers::FlatBufferBuilder& fbb)
@@ -679,6 +679,8 @@ std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> NOSProperty::SerializeM
 	{
 		metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, TCHAR_TO_UTF8(*key), TCHAR_TO_UTF8(*value)));
 	}
+	metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, TCHAR_TO_UTF8(*CategoryName)));
+	metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_ADVANCED_PROPERTY, IsAdvanced ? "true" : "false"));
 	return metadata;
 }
 
@@ -1216,7 +1218,7 @@ flatbuffers::Offset<nos::fb::Pin> NOSEnumProperty::Serialize(flatbuffers::FlatBu
 {
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	DisplayName = ValidateName(DisplayName);
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&(NOSProperty::Id), TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_ANSI(TEXT("string")), PinShowAs, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), SerializeVisualizer(fbb), &data, 0, 0, 0, 0, 0, ReadOnly, IsAdvanced, transient, &metadata, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*Property->GetDisplayNameText().ToString()));
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&(NOSProperty::Id), TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_ANSI(TEXT("string")), PinShowAs, PinCanShowAs, SerializeVisualizer(fbb), &data, 0, 0, 0, 0, 0, ReadOnly, transient, &metadata, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*Property->GetDisplayNameText().ToString()));
 }
 
 void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
