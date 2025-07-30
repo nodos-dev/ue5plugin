@@ -40,7 +40,7 @@ bool FNOSLicenseManager::UpdateFeature(bool registerFeature, AActor* actor, USce
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		NOSClient.AppServiceClient->Send(*root);
+		NOSClient.AppServiceClient->Send(root);
 		return true;
 	}
 	
