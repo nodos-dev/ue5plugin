@@ -1,7 +1,7 @@
 // Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
 #include "NOSActorProperties.h"
-#include "NOSTextureShareManager.h"
+#include "NOSResourceShareManager.h"
 #include "EditorCategoryUtils.h"
 #include "ObjectEditorUtils.h"
 #include "NOSTrack.h"
@@ -11,6 +11,8 @@
 #include "PropertyEditorModule.h"
 #include "Engine/Engine.h"
 #include <nosTrack/Track_generated.h>
+
+#include "NOSGPUBuffer.h"
 
 #define CHECK_PROP_SIZE() {if (size != Property->GetElementSize()){UE_LOG(LogNOSSceneTreeManager, Error, TEXT("Property size mismatch with Nodos"));return;}}
 
@@ -863,12 +865,19 @@ bool PropertyVisible(FProperty* ueproperty);
 NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uproperty, FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
 	: NOSProperty(container, uproperty, parentCategory, StructPtr, parentProperty), objectprop(uproperty)
 {
-	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
+	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>())
 	{
 		TypeName = "nos.sys.vulkan.Texture";
 		ReadOnly = true;
-		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(this);
+		auto tex = NOSResourceShareManager::GetInstance()->AddTexturePin(this);
 		data = nos::Buffer::From(tex);
+	}
+	else if (objectprop->PropertyClass->IsChildOf<UNOSGPUBuffer>())
+	{
+		TypeName = "nos.sys.vulkan.Buffer";
+		ReadOnly = true;
+		auto buf = NOSResourceShareManager::GetInstance()->AddBufferPin(this);
+		data = nos::Buffer::From(buf);
 	}
 	else if (objectprop->PropertyClass->IsChildOf<UUserWidget>())
 	{
@@ -991,21 +1000,29 @@ std::vector<uint8> NOSObjectProperty::UpdatePinValue(uint8* customContainer)
 	UObject* container = GetRawObjectContainer();
 
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
-		{
+	{
 		const nos::sys::vulkan::Texture* tex = flatbuffers::GetRoot<nos::sys::vulkan::Texture>(data.data());
 		nos::sys::vulkan::TTexture texture;
 		tex->UnPackTo(&texture);
 
-		if (NOSTextureShareManager::GetInstance()->UpdateTexturePin(this, texture))
-			{
+		if (NOSResourceShareManager::GetInstance()->UpdateTexturePin(this, texture))
+		{
 			// data = nos::Buffer::From(texture);
 			flatbuffers::FlatBufferBuilder fb;
 			auto offset = nos::sys::vulkan::CreateTexture(fb, &texture);
 			fb.Finish(offset);
 			nos::Buffer buffer = fb.Release();
 			data = buffer;
-			}
 		}
+	}
+	else if (objectprop->PropertyClass->IsChildOf<UNOSGPUBuffer>())
+	{
+		auto* buf = reinterpret_cast<nos::sys::vulkan::Buffer*>(data.data());
+		if (NOSResourceShareManager::GetInstance()->UpdateBufferPin(this, *buf))
+		{
+			data = nos::Buffer::From(*buf);
+		}
+	}
 
 	return std::vector<uint8>(); 
 }

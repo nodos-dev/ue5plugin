@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "NOSGPUBuffer.h"
 #include "Engine/TextureRenderTarget2D.h"
 #pragma warning (disable : 4800)
 #pragma warning (disable : 4668)
@@ -69,26 +70,28 @@ struct SharedResourceInfo
 	SharedResourceInfo& operator=(SharedResourceInfo&&) = delete;
 	~SharedResourceInfo();
 	NOSProperty* SrcNosp = 0;
-	UPROPERTY()
-	TObjectPtr<UTextureRenderTarget2D> DstResource = 0;
+	TObjectPtr<UTextureRenderTarget2D> DstTexture = 0;
+	TObjectPtr<UNOSGPUBuffer> DstBuffer = 0;
 	HANDLE SharedHandle = 0;
 	nos::fb::ShowAs ShowAs;
 };
 //This class manages copy operations between textures of Nodos and unreal 2d texture target
-class NOSSCENETREEMANAGER_API NOSTextureShareManager
+class NOSSCENETREEMANAGER_API NOSResourceShareManager
 {
 //protected:
 public:
-	NOSTextureShareManager();
-	static NOSTextureShareManager* singleton;
+	NOSResourceShareManager();
+	static NOSResourceShareManager* singleton;
 
-	static NOSTextureShareManager* GetInstance();
+	static NOSResourceShareManager* GetInstance();
 
-	~NOSTextureShareManager();
+	~NOSResourceShareManager();
 	
 	nos::sys::vulkan::TTexture AddTexturePin(NOSProperty*);
+	nos::sys::vulkan::Buffer AddBufferPin(NOSProperty*);
 	void UpdateTexturePin(NOSProperty*, nos::fb::ShowAs);
 	bool UpdateTexturePin(NOSProperty* NosProperty, nos::sys::vulkan::TTexture& Texture);
+	bool UpdateBufferPin(NOSProperty* NosProperty, nos::sys::vulkan::Buffer& Buffer);
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
@@ -126,6 +129,7 @@ private:
 	UPROPERTY()
 	TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>> Copies;
 	bool CreateTextureResource(NOSProperty*, nos::sys::vulkan::TTexture& Texture, SharedResourceInfo& Resource);
+	bool CreateBufferResource(NOSProperty*, nos::sys::vulkan::Buffer& Buffer, SharedResourceInfo& Resource);
 
 	void Initiate();
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;

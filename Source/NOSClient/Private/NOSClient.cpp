@@ -531,8 +531,8 @@ void NOSEventDelegates::OnExecuteAppInfo(nos::app::AppExecuteInfo const* appExec
 	{
 		return;
 	}
-	
-	PluginClient->OnUpdatedNodeExecuted(*appExecuteInfo->delta_seconds());
+	auto deltaSeconds = appExecuteInfo->delta_seconds() ? *appExecuteInfo->delta_seconds() : nos::fb::vec2u(0, 1);
+	PluginClient->OnUpdatedNodeExecuted(deltaSeconds);
 }
 
 void NOSEventDelegates::OnNodeSelected(nos::fb::UUID const& nodeId)
