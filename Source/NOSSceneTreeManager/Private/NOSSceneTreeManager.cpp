@@ -550,16 +550,7 @@ void FNOSSceneTreeManager::OnNOSNodeSelected(nos::fb::UUID const& nodeId)
 	FGuid id = *(FGuid*)&nodeId;
 	if(auto node = SceneTree.GetNode(id))
 	{
-		if(auto actorNode = node->GetAsActorNode())
-		{
-			if(actorNode->actor.Get())
-				PopulateAllChildsOfActor(actorNode->actor.Get());
-		}
-		
-		else if (PopulateNode(id))
-		{
-			SendNodeUpdate(id);
-		}
+		PopulateNodeAndDirectDescendants(node);
 	}
 }
 
@@ -577,14 +568,7 @@ void FNOSSceneTreeManager::LoadNodesOnPath(FString NodePath)
 			if(child && child->Name == nodeName)
 			{
 				LOGF("Populating node named %s", *child->Name);
-				if(auto actorNode = child->GetAsActorNode())
-				{
-					PopulateAllChildsOfActor(actorNode->actor.Get());
-				}
-				else if (PopulateNode(child->Id))
-				{
-					SendNodeUpdate(child->Id);
-				}
+				PopulateNodeAndDirectDescendants(child.Get());
 				CurrentNode = child;
 				break;
 			}
@@ -1493,11 +1477,17 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				Container = sceneActorMap.FindRef(ActorId);
 				if(auto actor = Cast<AActor>(Container))
 				{
-					PopulateAllChildsOfActor(actor);
+					if (auto ActorNode = SceneTree.GetNodeFromActorId(actor->GetActorGuid()))
+					{
+						PopulateNodeAndDirectDescendants(ActorNode);
+					}
 					while(actor->GetSceneOutlinerParent())
 					{
-						actor = actor->GetSceneOutlinerParent();
-						PopulateAllChildsOfActor(actor);
+						actor = actor->GetSceneOutlinerParent(); 
+						if (auto ActorNode = SceneTree.GetNodeFromActorId(actor->GetActorGuid()))
+						{
+							PopulateNodeAndDirectDescendants(ActorNode);
+						}
 					}
 				}
 			}
@@ -1902,9 +1892,9 @@ TSharedPtr<NOSFunction> FNOSSceneTreeManager::AddFunctionToActorNode(ActorNode* 
 	return nosfunc;
 }
 
-bool FNOSSceneTreeManager::PopulateNode(FGuid nodeId)
+bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 {
-	auto treeNode = SceneTree.GetNode(nodeId);
+	auto nodeId = treeNode->Id;
 
 	if (!treeNode || !treeNode->NeedsReload)
 	{
@@ -2691,6 +2681,32 @@ void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor)
 	PopulateAllChildsOfActor(ActorId);
 }
 
+void FNOSSceneTreeManager::PopulateNodeAndDirectDescendants(TreeNode* Node)
+{
+	LOGF("Populating all childs of node with id %s", *Node->Id.ToString());
+	PopulateAndSendNode(Node);
+
+	for (auto ChildNode : Node->Children)
+	{
+		if(auto actorNode = ChildNode->GetAsActorNode())
+		{
+			PopulateAndSendNode(ChildNode.Get());
+		}
+		else if(auto sceneComponentNode = ChildNode->GetAsSceneComponentNode())
+		{
+			PopulateAllChildsOfSceneComponentNode(sceneComponentNode);
+		}
+	}
+}
+
+void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node)
+{
+	if (PopulateNode(Node))
+	{
+		SendNodeUpdate(Node->Id);
+	}
+}
+
 void FNOSSceneTreeManager::ReloadCurrentMap()
 {
 	if (!IsValid(daWorld))
@@ -2712,25 +2728,27 @@ void FNOSSceneTreeManager::ReloadCurrentMap()
 void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId)
 {
 	LOGF("Populating all childs of actor with id %s", *ActorId.ToString());
-	if (PopulateNode(SceneTree.GetNodeIdActorId(ActorId)))
+	auto ActorNode = SceneTree.GetNodeFromActorId(ActorId);
+	if(!ActorNode)
 	{
-		SendNodeUpdate(SceneTree.GetNodeIdActorId(ActorId));
+		LOGF("Actor with id %s is not found in scene tree, cannot populate childs!", *ActorId.ToString());
+		return;
+	}
+	if (PopulateNode(ActorNode))
+	{
+		SendNodeUpdate(ActorNode->Id);
 	}
 
-	if(auto ActorNode = SceneTree.GetNodeFromActorId(ActorId))
+	for (auto ChildNode : ActorNode->Children)
 	{
-		for (auto ChildNode : ActorNode->Children)
+		if (ChildNode->GetAsActorNode())
 		{
-			if (ChildNode->GetAsActorNode())
-			{
-				PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get());
-			}
-			else if (ChildNode->GetAsSceneComponentNode())
-			{
-				PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode());
-			}
+			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get());
 		}
-
+		else if (ChildNode->GetAsSceneComponentNode())
+		{
+			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode());
+		}
 	}
 }
 
@@ -2741,7 +2759,7 @@ void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentN
 		return;
 	}
 
-	if (PopulateNode(SceneComponentNode->Id))
+	if (PopulateNode(SceneComponentNode))
 	{
 		SendNodeUpdate(SceneComponentNode->Id);
 	}

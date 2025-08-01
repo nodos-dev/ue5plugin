@@ -212,7 +212,7 @@ public:
 
 	TSharedPtr<NOSFunction> AddFunctionToActorNode(ActorNode* actorNode, UFunction* UEFunction, UObject* Container);
 	//Populates node with child actors/components, functions and properties
-	bool PopulateNode(FGuid id);
+	bool PopulateNode(TreeNode* node);
 
 	//Sends node updates to the Nodos
 	void SendNodeUpdate(FGuid NodeId, bool bResetRootPins = true);
@@ -248,6 +248,11 @@ public:
 	void SendActorNodeDeleted(ActorNode* node);
 	
 	void PopulateAllChildsOfActor(AActor* actor);
+
+	//This populates the node, its direct descendants, all of its child components and all of their children.
+	void PopulateNodeAndDirectDescendants(TreeNode* Node);
+
+	void PopulateAndSendNode(TreeNode* Node);
 
 	void ReloadCurrentMap();
 
