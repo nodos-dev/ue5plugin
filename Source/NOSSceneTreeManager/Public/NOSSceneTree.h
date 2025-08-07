@@ -28,12 +28,13 @@ struct NOSSCENETREEMANAGER_API  TreeNode : public TSharedFromThis<TreeNode> {
 	TreeNode* Parent;
 	FGuid Id;
 	bool NeedsReload = true;
+	bool WasSerializedWithFilteredPins = false;
 	std::vector<TSharedPtr<TreeNode>> Children;
 	TMap<FString, FString> nosMetaData;
 
 	
-	virtual flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb);
-	std::vector<flatbuffers::Offset<nos::fb::Node>> SerializeChildren(flatbuffers::FlatBufferBuilder& fbb);
+	virtual flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins = false);
+	std::vector<flatbuffers::Offset<nos::fb::Node>> SerializeChildren(flatbuffers::FlatBufferBuilder& fbb, bool filterPins = false);
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> SerializeMetaData(flatbuffers::FlatBufferBuilder& fbb);
 
 	virtual ~TreeNode();
@@ -46,8 +47,8 @@ struct NOSSCENETREEMANAGER_API  ActorNode : TreeNode
 	std::vector<TSharedPtr<NOSFunction>> Functions;
 	virtual FString GetClassDisplayName() override { return actor ? actor->GetClass()->GetFName().ToString() : "Actor"; };
 	virtual ActorNode* GetAsActorNode() override { return this; };
-	virtual flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb) override;
-	std::vector<flatbuffers::Offset<nos::fb::Pin>> SerializePins(flatbuffers::FlatBufferBuilder& fbb);
+	virtual flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins = false) override;
+	std::vector<flatbuffers::Offset<nos::fb::Pin>> SerializePins(flatbuffers::FlatBufferBuilder& fbb, bool filterPins = false);
 	
 	virtual ~ActorNode();
 };
@@ -58,8 +59,8 @@ struct NOSSCENETREEMANAGER_API  SceneComponentNode : TreeNode
 	std::vector<TSharedPtr<NOSProperty>> Properties;
 	virtual FString GetClassDisplayName() override { return sceneComponent ? sceneComponent->GetClass()->GetFName().ToString() : FString("ActorComponent"); };
 	virtual SceneComponentNode* GetAsSceneComponentNode() override { return this; };
-	virtual flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb) override;
-	std::vector<flatbuffers::Offset<nos::fb::Pin>> SerializePins(flatbuffers::FlatBufferBuilder& fbb);
+	virtual flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins = false) override;
+	std::vector<flatbuffers::Offset<nos::fb::Pin>> SerializePins(flatbuffers::FlatBufferBuilder& fbb, bool filterPins = false);
 
 	virtual ~SceneComponentNode();
 };
@@ -93,10 +94,13 @@ public:
 	void RemoveNode(FGuid NodeId);
 	TreeNode* GetFolderOrRoot(TreeNode* node);
 
+	SceneComponentNode* GetSceneComponentNode(USceneComponent* SceneComponent);
+
 	void Clear();
 
 private:
 	TMap<FGuid, TSharedPtr<TreeNode>> NodeMap;
 	TMap<FGuid, FGuid> ActorIdToNodeId;
+	TMap<USceneComponent*, TSharedPtr<SceneComponentNode>> SceneComponentToNodeMap;
 	void ClearRecursive(TSharedPtr<TreeNode> node);
 };

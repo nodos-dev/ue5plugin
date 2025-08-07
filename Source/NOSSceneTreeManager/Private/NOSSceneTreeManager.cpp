@@ -32,6 +32,7 @@ DEFINE_LOG_CATEGORY(LogNOSSceneTreeManager);
 IMPLEMENT_MODULE(FNOSSceneTreeManager, NOSSceneTreeManager)
 
 UWorld* FNOSSceneTreeManager::daWorld = nullptr;
+TSet<FGuid> FNOSSceneTreeManager::PropertiesNeeded = {};
 
 static TAutoConsoleVariable<int32> CVarReloadLevelFrameCount(TEXT("Nodos.ReloadFrameCount"), 10, TEXT("Reload frame count"));
 
@@ -1189,6 +1190,7 @@ void FNOSSceneTreeManager::OnActorDetached(AActor* Actor, const AActor* ParentAc
 
 void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 {
+	PropertiesNeeded.Empty();
 	//NOSActorManager->ClearActors();
 	FNOSClient::NodeId = *(FGuid*)appNode.id();
 	SceneTree.Root->Id = FNOSClient::NodeId;
@@ -1465,209 +1467,289 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 	PinUpdates.clear();
 	flatbuffers::FlatBufferBuilder fb2;
 	std::vector<NOSPortal> NewPortals;
-	for (auto const& update : updates)
+
+#pragma region Populate Needed Nodes
 	{
-		FGuid ActorId = update.actorId;
-		
-		if (update.IsPortal)
+
+		std::vector<TreeNode*> NodesToSendUpdate;
+		for (auto const& update : updates)
 		{
-			UObject* Container = nullptr;
-			if (sceneActorMap.Contains(ActorId))
-			{
-				Container = sceneActorMap.FindRef(ActorId);
-				if(auto actor = Cast<AActor>(Container))
-				{
-					if (auto ActorNode = SceneTree.GetNodeFromActorId(actor->GetActorGuid()))
-					{
-						PopulateNodeAndDirectDescendants(ActorNode);
-					}
-					while(actor->GetSceneOutlinerParent())
-					{
-						actor = actor->GetSceneOutlinerParent(); 
-						if (auto ActorNode = SceneTree.GetNodeFromActorId(actor->GetActorGuid()))
-						{
-							PopulateNodeAndDirectDescendants(ActorNode);
-						}
-					}
-				}
-			}
-			else
-			{
+			if (!update.IsPortal)
 				continue;
-			}
-
-			if (!update.FunctionName.IsEmpty())
-			{
-				//find function
-				if (RegisteredFunctions.Contains(update.FunctionId))
-				{
-					auto func = RegisteredFunctions.FindRef(update.FunctionId);
-					for (auto& prop : func->Properties)
-					{
-						bool match = false;
-						
-						if(!prop->Property)
-						{
-							// TODO: Checking with metadata should be enough by itself
-							if (prop->DisplayName == update.FunctionPropertyName)
-								match = true;
-							else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
-								propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
-								match = true;
-						}
-						else
-							if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
-							{
-								match = true;
-							}
-
-						if (!match)
-							continue;
-
-						PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id,
-							nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
-						auto NosProperty = prop;
-						NOSPortal NewPortal{update.pinId ,NosProperty->Id};
-						NewPortal.DisplayName = FString("");
-						UObject* parent = NosProperty->GetRawObjectContainer();
-						FString parentName = "";
-						FString parentUniqueName = "";
-						AActor* parentAsActor = nullptr;
-						while (parent)
-						{
-							parentName = parent->GetFName().ToString();
-							parentUniqueName = parent->GetFName().ToString() + "-";
-							if (auto actor = Cast<AActor>(parent))
-							{
-								parentName = actor->GetActorLabel();
-								parentAsActor = actor;
-							}
-							if(auto component = Cast<USceneComponent>(parent))
-								parentName = component->GetName();
-							parentName += ".";
-							parent = parent->GetTypedOuter<AActor>();
-						}
-						if (parentAsActor)
-						{
-							while (parentAsActor->GetSceneOutlinerParent())
-							{
-								parentAsActor = parentAsActor->GetSceneOutlinerParent();
-								if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
-								{
-									if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
-									{
-										if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
-										{
-											break;
-										}
-									}
-								}
-								parentName = parentAsActor->GetActorLabel() + "." + parentName;
-								parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
-							}
-						}
-
-						NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
-						NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
-						NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
-						NewPortal.CategoryName = NosProperty->CategoryName;
-						NewPortal.ShowAs = update.pinShowAs;
-
-						NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
-						NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
-						NewPortals.push_back(NewPortal);
-						NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-						NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
-					}
-				}
+			if (!sceneActorMap.Contains(update.actorId))
 				continue;
-			}
-
-
+			AActor* actor = sceneActorMap.FindRef(update.actorId);
+			UObject* Container = actor;
+			USceneComponent* sceneComponent = nullptr;
 			if (!update.componentName.IsEmpty())
 			{
-				Container = FindObject<USceneComponent>(Container, *update.componentName);
+				sceneComponent = FindObject<USceneComponent>(Container, *update.componentName);
+				Container = sceneComponent;
 			}
-			if(!Container)
+			if (!Container)
 			{
 				continue;
 			}
-			
+
 			FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
-			if(!PropertyToUpdate)
+			if (!PropertyToUpdate)
 			{
 				continue;
 			}
 			void* UnknownContainer = Container;
-			if(!update.ContainerPath.IsEmpty())
+			if (!update.ContainerPath.IsEmpty())
 			{
 				bool discard;
 				UnknownContainer = FindContainerFromContainerPath(Container, update.ContainerPath, discard);
 			}
-			if(!UnknownContainer)
+			if (!UnknownContainer)
 			{
 				continue;
 			}
-			if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyToUpdate, UnknownContainer}))
+
+			std::stack<AActor*> actorsToPopulate;
+			std::stack<USceneComponent*> componentsToPopulate;
+			if (sceneComponent)
 			{
-				auto NosProperty = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyToUpdate, UnknownContainer});
-				PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
-				NOSPortal NewPortal{update.pinId ,NosProperty->Id};
-				
-				NewPortal.DisplayName = FString("");
-				UObject* parent = NosProperty->GetRawObjectContainer();
-				FString parentName = "";
-				FString parentUniqueName = "";
-				AActor* parentAsActor = nullptr;
-				while (parent)
+				componentsToPopulate.push(sceneComponent);
+				auto componentParent = sceneComponent->GetAttachParent();
+				while (componentParent)
 				{
-					parentName = parent->GetFName().ToString();
-					parentUniqueName = parent->GetFName().ToString() + "-";
-					if (auto actor = Cast<AActor>(parent))
-					{
-						parentName = actor->GetActorLabel();
-						parentAsActor = actor;
-					}
-					if(auto component = Cast<USceneComponent>(parent))
-						parentName = component->GetName();
-					parentName += ".";
-					parent = parent->GetTypedOuter<AActor>();
+					componentsToPopulate.push(componentParent);
+					componentParent = componentParent->GetAttachParent();
 				}
-				if (parentAsActor)
-				{
-					while (parentAsActor->GetSceneOutlinerParent())
-					{
-						parentAsActor = parentAsActor->GetSceneOutlinerParent();
-						if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
-						{
-							if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
-							{
-								if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
-								{
-									break;
-								}
-							}
-						}
-						parentName = parentAsActor->GetActorLabel() + "." + parentName;
-						parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
-					}
-				}
-
-				NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
-				NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
-				NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
-				NewPortal.CategoryName = NosProperty->CategoryName;
-				NewPortal.ShowAs = update.pinShowAs;
-
-				NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
-				NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
-				NewPortals.push_back(NewPortal);
-				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 			}
-			
+			actorsToPopulate.push(actor);
+			auto actorParent = actor->GetAttachParentActor();
+			while (actorParent)
+			{
+				actorsToPopulate.push(actorParent);
+				actorParent = actorParent->GetAttachParentActor();
+			}
+
+			while (!actorsToPopulate.empty())
+			{
+				auto actorToPopulate = actorsToPopulate.top();
+				actorsToPopulate.pop();
+				if (auto actorNode = SceneTree.GetNode(actorToPopulate))
+				{
+					PopulateNode(actorNode);
+					NodesToSendUpdate.push_back(actorNode);
+				}
+			}
+
+			while (!componentsToPopulate.empty())
+			{
+				auto component = componentsToPopulate.top();
+				componentsToPopulate.pop();
+				if (auto componentNode = SceneTree.GetSceneComponentNode(component))
+				{
+					PopulateNode(componentNode);
+					NodesToSendUpdate.push_back(componentNode);
+				}
+			}
+
+			if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
+				continue;
+			NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
+			PropertiesNeeded.Add(nosprop->Id);
 		}
 
+		std::unordered_set<TreeNode*> NodesSentUpdated;
+		for (auto nodeToSendUpdate : NodesToSendUpdate)
+		{
+			if (!NodesSentUpdated.insert(nodeToSendUpdate).second)
+				continue;
+			SendNodeUpdate(nodeToSendUpdate->Id, true);
+		}
+	}
+
+#pragma endregion
+
+	for (auto const& update : updates)
+	{
+		if (!update.IsPortal)
+			continue;
+		FGuid ActorId = update.actorId;
+
+		auto propertyPath = update.PropertyPath;
+
+
+		if (!sceneActorMap.Contains(ActorId))
+			continue;
+		AActor* actor = sceneActorMap.FindRef(ActorId);
+		UObject* Container = actor;
+		USceneComponent* sceneComponent = nullptr;
+		if (!update.componentName.IsEmpty())
+		{
+			sceneComponent = FindObject<USceneComponent>(Container, *update.componentName);
+			Container = sceneComponent;
+		}
+		if (!Container)
+		{
+			continue;
+		}
+
+		FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
+		if (!PropertyToUpdate)
+		{
+			continue;
+		}
+		void* UnknownContainer = Container;
+		if (!update.ContainerPath.IsEmpty())
+		{
+			bool discard;
+			UnknownContainer = FindContainerFromContainerPath(Container, update.ContainerPath, discard);
+		}
+		if (!UnknownContainer)
+		{
+			continue;
+		}
+
+		if (!update.FunctionName.IsEmpty())
+		{
+			//find function
+			if (RegisteredFunctions.Contains(update.FunctionId))
+			{
+				auto func = RegisteredFunctions.FindRef(update.FunctionId);
+				for (auto& prop : func->Properties)
+				{
+					bool match = false;
+						
+					if(!prop->Property)
+					{
+						// TODO: Checking with metadata should be enough by itself
+						if (prop->DisplayName == update.FunctionPropertyName)
+							match = true;
+						else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
+							propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
+							match = true;
+					}
+					else
+						if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
+						{
+							match = true;
+						}
+
+					if (!match)
+						continue;
+
+					PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id,
+						nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
+					auto NosProperty = prop;
+					NOSPortal NewPortal{update.pinId ,NosProperty->Id};
+					NewPortal.DisplayName = FString("");
+					UObject* parent = NosProperty->GetRawObjectContainer();
+					FString parentName = "";
+					FString parentUniqueName = "";
+					AActor* parentAsActor = nullptr;
+					while (parent)
+					{
+						parentName = parent->GetFName().ToString();
+						parentUniqueName = parent->GetFName().ToString() + "-";
+						if (auto parentActor = Cast<AActor>(parent))
+						{
+							parentName = parentActor->GetActorLabel();
+							parentAsActor = parentActor;
+						}
+						if(auto component = Cast<USceneComponent>(parent))
+							parentName = component->GetName();
+						parentName += ".";
+						parent = parent->GetTypedOuter<AActor>();
+					}
+					if (parentAsActor)
+					{
+						while (parentAsActor->GetSceneOutlinerParent())
+						{
+							parentAsActor = parentAsActor->GetSceneOutlinerParent();
+							if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
+							{
+								if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
+								{
+									if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
+									{
+										break;
+									}
+								}
+							}
+							parentName = parentAsActor->GetActorLabel() + "." + parentName;
+							parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
+						}
+					}
+
+					NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
+					NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
+					NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
+					NewPortal.CategoryName = NosProperty->CategoryName;
+					NewPortal.ShowAs = update.pinShowAs;
+
+					NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
+					NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
+					NewPortals.push_back(NewPortal);
+					NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
+					NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
+				}
+			}
+			continue;
+		}
+	
+		if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyToUpdate, UnknownContainer}))
+		{
+			auto NosProperty = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyToUpdate, UnknownContainer});
+			PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
+			NOSPortal NewPortal{update.pinId ,NosProperty->Id};
+				
+			NewPortal.DisplayName = FString("");
+			UObject* parent = NosProperty->GetRawObjectContainer();
+			FString parentName = "";
+			FString parentUniqueName = "";
+			AActor* parentAsActor = nullptr;
+			while (parent)
+			{
+				parentName = parent->GetFName().ToString();
+				parentUniqueName = parent->GetFName().ToString() + "-";
+				if (auto parentActor = Cast<AActor>(parent))
+				{
+					parentName = parentActor->GetActorLabel();
+					parentAsActor = actor;
+				}
+				if(auto component = Cast<USceneComponent>(parent))
+					parentName = component->GetName();
+				parentName += ".";
+				parent = parent->GetTypedOuter<AActor>();
+			}
+			if (parentAsActor)
+			{
+				while (parentAsActor->GetSceneOutlinerParent())
+				{
+					parentAsActor = parentAsActor->GetSceneOutlinerParent();
+					if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
+					{
+						if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
+						{
+							if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
+							{
+								break;
+							}
+						}
+					}
+					parentName = parentAsActor->GetActorLabel() + "." + parentName;
+					parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
+				}
+			}
+
+			NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
+			NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
+			NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
+			NewPortal.CategoryName = NosProperty->CategoryName;
+			NewPortal.ShowAs = update.pinShowAs;
+
+			NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
+			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
+			NewPortals.push_back(NewPortal);
+			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
+			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
+		}
 	}
 	for (auto const& update : updates)
 	{
@@ -2206,7 +2288,7 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 }
 
 
-void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
+void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending)
 {
 	LOGF("Sending node update to Nodos with id %s", *nodeId.ToString());
 	if (!NOSClient->IsConnected() || !nodeId.IsValid())
@@ -2219,7 +2301,7 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
 		if (!bResetRootPins)
 		{
 			flatbuffers::FlatBufferBuilder mb;
-			std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb);
+			std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb, filterPinsWhileSending);
 			std::vector<flatbuffers::Offset<nos::fb::Node>> graphFunctions;
 			for (auto& [_, cfunc] : CustomFunctions)
 			{
@@ -2237,7 +2319,7 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
 		}
 
 		flatbuffers::FlatBufferBuilder mb = flatbuffers::FlatBufferBuilder();
-		std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb);
+		std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb, filterPinsWhileSending);
 		std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 		for (auto& [_, property] : CustomProperties)
 		{
@@ -2269,15 +2351,15 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins)
 		return;
 	}
 	flatbuffers::FlatBufferBuilder mb;
-	std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = treeNode->SerializeChildren(mb);
+	std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = treeNode->SerializeChildren(mb, filterPinsWhileSending);
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 	if (treeNode->GetAsActorNode())
 	{
-		graphPins = treeNode->GetAsActorNode()->SerializePins(mb);
+		graphPins = treeNode->GetAsActorNode()->SerializePins(mb, filterPinsWhileSending);
 	}
 	else if (treeNode->GetAsSceneComponentNode())
 	{
-		graphPins = treeNode->GetAsSceneComponentNode()->SerializePins(mb);
+		graphPins = treeNode->GetAsSceneComponentNode()->SerializePins(mb, filterPinsWhileSending);
 	}
 	std::vector<flatbuffers::Offset<nos::fb::Node>> graphFunctions;
 	if (treeNode->GetAsActorNode())
@@ -2684,26 +2766,28 @@ void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor)
 void FNOSSceneTreeManager::PopulateNodeAndDirectDescendants(TreeNode* Node)
 {
 	LOGF("Populating all childs of node with id %s", *Node->Id.ToString());
-	PopulateAndSendNode(Node);
+	PopulateAndSendNode(Node, false);
 
 	for (auto ChildNode : Node->Children)
 	{
 		if(auto actorNode = ChildNode->GetAsActorNode())
 		{
-			PopulateAndSendNode(ChildNode.Get());
+			PopulateAndSendNode(ChildNode.Get(), false);
 		}
 		else if(auto sceneComponentNode = ChildNode->GetAsSceneComponentNode())
 		{
+
 			PopulateAllChildsOfSceneComponentNode(sceneComponentNode);
 		}
 	}
 }
 
-void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node)
+void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending)
 {
-	if (PopulateNode(Node))
+	if (PopulateNode(Node) || (Node->WasSerializedWithFilteredPins && !filterPinsWhileSending))
 	{
-		SendNodeUpdate(Node->Id);
+		Node->WasSerializedWithFilteredPins = filterPinsWhileSending;
+		SendNodeUpdate(Node->Id, true, filterPinsWhileSending);
 	}
 }
 

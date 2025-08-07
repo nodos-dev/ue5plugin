@@ -215,7 +215,7 @@ public:
 	bool PopulateNode(TreeNode* node);
 
 	//Sends node updates to the Nodos
-	void SendNodeUpdate(FGuid NodeId, bool bResetRootPins = true);
+	void SendNodeUpdate(FGuid NodeId, bool bResetRootPins = true, bool filterPinsWhileSending = false);
 
 	void SendEngineFunctionUpdate();
 
@@ -252,7 +252,7 @@ public:
 	//This populates the node, its direct descendants, all of its child components and all of their children.
 	void PopulateNodeAndDirectDescendants(TreeNode* Node);
 
-	void PopulateAndSendNode(TreeNode* Node);
+	void PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending);
 
 	void ReloadCurrentMap();
 
@@ -349,5 +349,8 @@ public:
 	TSet<TWeakObjectPtr<ULevel>> AlreadyLoadedStreamingLevels;
 
 	TSet<FGuid> ActorsDeletedFromNodos;
+
+	static TSet<FGuid> PropertiesNeeded;
+
 };
 
