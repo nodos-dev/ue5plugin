@@ -923,6 +923,7 @@ struct PropUpdate
 	FString FunctionName;
 	FGuid FunctionId;
 	FString FunctionPropertyName;
+	bool IsFunctionTrigger;
 };
 
 struct NodeAndActorGuid
@@ -1304,8 +1305,10 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				{
 					FunctionPropertyName = FString(entry->value()->c_str());
 				}
+
+				bool IsFunctionTrigger = prop->type_name()->string_view() == nos::exe::GetFullyQualifiedName();
 				
-				updates.push_back({ id, *(FGuid*)prop->id(),displayName, componentName, PropertyPath, ContainerPath,valcopy, valsize, defcopy, defsize, prop->show_as(), IsPortal, FunctionName, FunctionId, FunctionPropertyName});
+				updates.push_back({ id, *(FGuid*)prop->id(),displayName, componentName, PropertyPath, ContainerPath,valcopy, valsize, defcopy, defsize, prop->show_as(), IsPortal, FunctionName, FunctionId, FunctionPropertyName, IsFunctionTrigger});
 			}
 
 		}
@@ -1492,7 +1495,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			}
 
 			FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
-			if (!PropertyToUpdate)
+			if (!PropertyToUpdate && !update.IsFunctionTrigger)
 			{
 				continue;
 			}
@@ -1549,10 +1552,28 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				}
 			}
 
-			if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
-				continue;
-			NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
-			PropertiesNeeded.Add(nosprop->Id);
+			if (!update.IsFunctionTrigger)
+			{
+				if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
+					continue;
+				NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
+				PropertiesNeeded.Add(nosprop->Id);
+			}
+			else
+			{
+				if (auto Function = Container->FindFunction(FName(update.FunctionName)))
+				{
+					if (actor)
+					{
+						ActorNode* actorNode = SceneTree.GetNode(actor);
+						for (auto func : actorNode->Functions)
+							if (func->Function == Function)
+								for (auto prop : func->Properties)
+									if (prop->TypeName == nos::exe::GetFullyQualifiedName())
+										PropertiesNeeded.Add(prop->Id);
+					}
+				}
+			}
 		}
 
 		std::unordered_set<TreeNode*> NodesSentUpdated;
