@@ -1930,6 +1930,18 @@ TSharedPtr<NOSFunction> FNOSSceneTreeManager::AddFunctionToActorNode(ActorNode* 
 				nosfunc->OutProperties.push_back(nosprop);
 				nosprop->PinCanShowAs = nos::fb::CanShowAs::OUTPUT_PIN_OR_PROPERTY;
 			}
+			for(auto childProp : nosprop->childProperties)
+			{
+				childProp->Id = StringToFGuid(nosfunc->IdHashName + childProp->DisplayName);
+				NOSPropertyManager.PropertiesById.Add(childProp->Id, childProp);
+				nosfunc->Properties.push_back(childProp);
+				childProp->PinCanShowAs = nos::fb::CanShowAs::INPUT_PIN_OR_PROPERTY;
+				if (PropIt->HasAnyPropertyFlags(CPF_OutParm))
+				{
+					nosfunc->OutProperties.push_back(childProp);
+					childProp->PinCanShowAs = nos::fb::CanShowAs::OUTPUT_PIN_OR_PROPERTY;
+				}
+			}
 		}
 		else
 		{

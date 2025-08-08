@@ -31,6 +31,8 @@ flatbuffers::Offset<nos::fb::Node> NOSFunction::Serialize(flatbuffers::FlatBuffe
 	{
 		if (filterPins && !FNOSSceneTreeManager::PropertiesNeeded.Contains(nosprop->Id))
 			continue;
+		if(!nosprop->CanSerialize())
+			continue;
 		pins.push_back(nosprop->Serialize(fbb));
 	}
 

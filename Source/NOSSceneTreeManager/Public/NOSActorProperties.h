@@ -149,6 +149,7 @@ public:
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr);
 	//std::vector<uint8> GetValue(uint8* customContainer = nullptr);
 	void MarkState();
+	virtual bool CanSerialize() { return true; }
 	virtual flatbuffers::Offset<nos::fb::Pin> Serialize(flatbuffers::FlatBufferBuilder& fbb);
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> SerializeMetaData(flatbuffers::FlatBufferBuilder& fbb);
 	virtual flatbuffers::Offset<nos::fb::Visualizer> SerializeVisualizer(flatbuffers::FlatBufferBuilder& fbb) {return 0;}
@@ -422,11 +423,10 @@ class NOSObjectProperty : public NOSProperty
 public:
 	NOSObjectProperty(UObject* container, FObjectProperty* uproperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr);
 	
-
 	FObjectProperty* objectprop;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
-
+	bool CanSerialize() override { return TypeName != nos::Generic::GetFullyQualifiedName(); }
 };
 
 class NOSStructProperty : public NOSProperty
@@ -437,6 +437,7 @@ public:
 	FStructProperty* structprop;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override { return std::vector<uint8>(); }
+	bool CanSerialize() override { return false; }
 };
 
 

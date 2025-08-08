@@ -319,8 +319,11 @@ std::vector<flatbuffers::Offset<nos::fb::Pin>> ActorNode::SerializePins(flatbuff
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> pins;
 	for (auto nosprop : Properties)
 	{
-		if(!filterPins || FNOSSceneTreeManager::PropertiesNeeded.Contains(nosprop->Id))
-			pins.push_back(nosprop->Serialize(fbb));
+		if(filterPins && !FNOSSceneTreeManager::PropertiesNeeded.Contains(nosprop->Id))
+			continue;
+		if (!nosprop->CanSerialize())
+			continue;
+		pins.push_back(nosprop->Serialize(fbb));
 	}
 	return pins;
 }
@@ -343,8 +346,11 @@ std::vector<flatbuffers::Offset<nos::fb::Pin>> SceneComponentNode::SerializePins
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> pins;
 	for (auto nosprop : Properties)
 	{
-		if (!filterPins || FNOSSceneTreeManager::PropertiesNeeded.Contains(nosprop->Id))
-			pins.push_back(nosprop->Serialize(fbb));
+		if (filterPins && nosprop->TypeName != nos::exe::GetFullyQualifiedName() && !FNOSSceneTreeManager::PropertiesNeeded.Contains(nosprop->Id))
+			continue;
+		if (!nosprop->CanSerialize())
+			continue;
+		pins.push_back(nosprop->Serialize(fbb));
 	}
 	return pins;
 }
