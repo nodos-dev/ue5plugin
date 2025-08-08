@@ -299,6 +299,7 @@ SceneComponentNode* NOSSceneTree::GetSceneComponentNode(USceneComponent* SceneCo
 
 flatbuffers::Offset<nos::fb::Node> TreeNode::Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins)
 {
+	Name = ValidateName(Name);
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	std::vector<flatbuffers::Offset<nos::fb::Node>> childNodes = SerializeChildren(fbb, filterPins);
 	return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*Name), TCHAR_TO_UTF8(*GetClassDisplayName()), true, 0, 0, nos::fb::NodeContents::Graph, nos::fb::CreateGraphDirect(fbb, &childNodes).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, 0, 0, 0, &metadata);
@@ -306,6 +307,7 @@ flatbuffers::Offset<nos::fb::Node> TreeNode::Serialize(flatbuffers::FlatBufferBu
 
 flatbuffers::Offset<nos::fb::Node> ActorNode::Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins)
 {
+	Name = ValidateName(Name);
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	std::vector<flatbuffers::Offset<nos::fb::Node>> childNodes = SerializeChildren(fbb, filterPins);
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> pins = SerializePins(fbb, filterPins);
@@ -329,6 +331,7 @@ ActorNode::~ActorNode()
 
 flatbuffers::Offset<nos::fb::Node> SceneComponentNode::Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins)
 {
+	Name = ValidateName(Name);
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	std::vector<flatbuffers::Offset<nos::fb::Node>> childNodes = SerializeChildren(fbb, filterPins);
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> pins = SerializePins(fbb, filterPins);

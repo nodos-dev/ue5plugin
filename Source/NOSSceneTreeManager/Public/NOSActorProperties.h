@@ -57,6 +57,21 @@ inline FGuid StringToFGuid(const FString& inString)
 	return id;
 }
 
+inline FString ValidateName(FString& name)
+{
+	//add escape char before invalid characters
+	name = name.Replace(TEXT("\\"), TEXT("\\\\"))
+		.Replace(TEXT("\""), TEXT("\\\""))
+		.Replace(TEXT("\n"), TEXT("\\n"))
+		.Replace(TEXT("\r"), TEXT("\\r"))
+		.Replace(TEXT("\t"), TEXT("\\t"))
+		.Replace(TEXT("#"), TEXT("\\#"))
+		.Replace(TEXT("."), TEXT("\\."))
+		.Replace(TEXT("/"), TEXT("\\/"))
+		.Replace(TEXT(":"), TEXT("\\:"));
+	return name;
+}
+
 class NOSStructProperty;
 
 class NOSSCENETREEMANAGER_API NOSActorReference

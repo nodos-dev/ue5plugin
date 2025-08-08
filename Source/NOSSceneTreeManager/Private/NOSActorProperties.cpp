@@ -644,20 +644,6 @@ std::vector<uint8> NOSRotatorProperty::UpdatePinValue(uint8* customContainer)
 	return data;
 }
 
-FString ValidateName(FString& name)
-{
-	//add escape char before invalid characters
-	name = name.Replace(TEXT("\\"), TEXT("\\\\"));
-	name = name.Replace(TEXT("\""), TEXT("\\\""));
-	name = name.Replace(TEXT("\n"), TEXT("\\n"));
-	name = name.Replace(TEXT("\r"), TEXT("\\r"));
-	name = name.Replace(TEXT("\t"), TEXT("\\t"));
-	name = name.Replace(TEXT("#"), TEXT("\\#"));
-	name = name.Replace(TEXT("."), TEXT("\\."));
-	name = name.Replace(TEXT("/"), TEXT("\\/"));
-	return name;
-}
-
 flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBufferBuilder& fbb)
 {
 
