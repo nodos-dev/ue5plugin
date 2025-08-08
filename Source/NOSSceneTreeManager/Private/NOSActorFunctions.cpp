@@ -23,13 +23,15 @@ NOSFunction::NOSFunction(UObject* container, UFunction* function)
 	CategoryName = function->HasMetaData(NAME_Category) ? function->GetMetaData(NAME_Category) : "Default";
 }
 
-flatbuffers::Offset<nos::fb::Node> NOSFunction::Serialize(flatbuffers::FlatBufferBuilder& fbb)
+flatbuffers::Offset<nos::fb::Node> NOSFunction::Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins)
 {
 	DisplayName = ValidateName(DisplayName);
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> pins;
-	for (auto property : Properties)
+	for (auto nosprop : Properties)
 	{
-		pins.push_back(property->Serialize(fbb));
+		if (filterPins && !FNOSSceneTreeManager::PropertiesNeeded.Contains(nosprop->Id))
+			continue;
+		pins.push_back(nosprop->Serialize(fbb));
 	}
 
 	return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_UTF8(*Function->GetClass()->GetFName().ToString()), true, &pins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, TCHAR_TO_UTF8(*CategoryName), 0, false, 0, 0, 0);

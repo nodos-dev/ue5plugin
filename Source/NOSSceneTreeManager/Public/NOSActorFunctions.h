@@ -20,7 +20,7 @@ struct NOSSCENETREEMANAGER_API NOSFunction
 	std::vector<TSharedPtr<NOSProperty>> Properties;
 	std::vector<TSharedPtr<NOSProperty>> OutProperties;
 
-	flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb);
+	flatbuffers::Offset<nos::fb::Node> Serialize(flatbuffers::FlatBufferBuilder& fbb, bool filterPins);
 
 	void Invoke();
 };

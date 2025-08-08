@@ -1560,7 +1560,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		{
 			if (!NodesSentUpdated.insert(nodeToSendUpdate).second)
 				continue;
-			SendNodeUpdate(nodeToSendUpdate->Id, true);
+			SendNodeUpdate(nodeToSendUpdate->Id, true, true);
 		}
 	}
 
@@ -2350,8 +2350,9 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, boo
 	{
 		return;
 	}
+	auto wasSerializedWithFilteredPins = treeNode->WasSerializedWithFilteredPins;
+	treeNode->WasSerializedWithFilteredPins = filterPinsWhileSending;
 	flatbuffers::FlatBufferBuilder mb;
-	std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = treeNode->SerializeChildren(mb, filterPinsWhileSending);
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 	if (treeNode->GetAsActorNode())
 	{
@@ -2366,11 +2367,20 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, boo
 	{
 		for (auto nosfunc : treeNode->GetAsActorNode()->Functions)
 		{
-			graphFunctions.push_back(nosfunc->Serialize(mb));
+			graphFunctions.push_back(nosfunc->Serialize(mb, filterPinsWhileSending));
 		}
 	}
 	auto metadata = treeNode->SerializeMetaData(mb);
-	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, nos::ClearFlags::CLEAR_PINS | nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES | nos::ClearFlags::CLEAR_METADATA, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+	auto clearFlags = nos::ClearFlags::CLEAR_PINS | nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_METADATA;
+	bool shouldClearChildren = !wasSerializedWithFilteredPins || filterPinsWhileSending;
+	if (shouldClearChildren)
+	{
+		clearFlags |= nos::ClearFlags::CLEAR_NODES;
+	}
+	std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes;
+	if(shouldClearChildren) 
+		graphNodes = treeNode->SerializeChildren(mb, filterPinsWhileSending);
+	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, clearFlags, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
@@ -2786,7 +2796,6 @@ void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node, bool filterPinsWh
 {
 	if (PopulateNode(Node) || (Node->WasSerializedWithFilteredPins && !filterPinsWhileSending))
 	{
-		Node->WasSerializedWithFilteredPins = filterPinsWhileSending;
 		SendNodeUpdate(Node->Id, true, filterPinsWhileSending);
 	}
 }
