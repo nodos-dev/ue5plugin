@@ -55,6 +55,7 @@ public:
 	TMap<FGuid, TSharedPtr<NOSProperty>> PropertiesById;
 
 	TMap<TPair<FProperty*, void*>, TSharedPtr<NOSProperty>> PropertiesByPropertyAndContainer;
+	TMap<TPair<void*, UFunction*>, TSharedPtr<NOSFunction>> FunctionsByContainerAndUEFunction;
 	void Reset(bool ResetPortals = true);
 
 	void OnBeginFrame();
@@ -192,6 +193,8 @@ public:
 
 	void OnActorAttached(AActor* Actor, const AActor* ParentActor);
 	void OnActorDetached(AActor* Actor, const AActor* ParentActor);
+
+	TSharedPtr<NOSFunction> FindFunctionByActorAndName(FGuid ActorId, const FString& FunctionName);
 
 	//called when unreal engine node is imported from Nodos
 	void OnNOSNodeImported(nos::fb::Node const& appNode);
