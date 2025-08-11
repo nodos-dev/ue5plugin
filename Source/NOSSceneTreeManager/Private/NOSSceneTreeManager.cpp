@@ -1189,6 +1189,28 @@ void FNOSSceneTreeManager::OnActorDetached(AActor* Actor, const AActor* ParentAc
 		ActorsToBeAdded.AddUnique(Actor);
 }
 
+TSharedPtr<NOSFunction> FNOSSceneTreeManager::FindFunctionByActorAndName(FGuid ActorId, const FString& FunctionName)
+{
+	for (auto& [FuncId, Function] : RegisteredFunctions)
+	{
+		if (Function->Function->GetFName().ToString() == FunctionName)
+		{
+			// Check if this function belongs to the specified actor
+			if (auto ActorNode = SceneTree.GetNodeFromActorId(ActorId))
+			{
+				for (auto& ActorFunction : ActorNode->Functions)
+				{
+					if (ActorFunction->FunctionName == FunctionName)
+					{
+						return Function;
+					}
+				}
+			}
+		}
+	}
+	return nullptr;
+}
+
 void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 {
 	PropertiesNeeded.Empty();
@@ -1557,11 +1579,25 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
 				PropertiesNeeded.Add(nosprop->Id);
 			}
-			else
+			else // Functions
 			{
-				if (!RegisteredFunctions.Contains(update.FunctionId))
+				if (!actor)
+				{
 					continue;
-				auto func = RegisteredFunctions.FindRef(update.FunctionId);
+				}
+				auto* UEFunc = actor->FindFunction(FName(update.FunctionName));
+
+				auto* Found = NOSPropertyManager.FunctionsByContainerAndUEFunction.Find({ UnknownContainer, UEFunc });
+				if (!Found)
+				{
+					continue;
+				}
+
+				//if (!RegisteredFunctions.Contains(update.FunctionId))
+				//	continue;
+				//auto func = RegisteredFunctions.FindRef(update.FunctionId);
+
+				auto& func = *Found;
 
 				for (auto prop : func->Properties)
 				{
@@ -1638,88 +1674,97 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		if (!update.FunctionName.IsEmpty())
 		{
 			//find function
-			if (RegisteredFunctions.Contains(update.FunctionId))
+			if (!actor)
 			{
-				auto func = RegisteredFunctions.FindRef(update.FunctionId);
-				for (auto& prop : func->Properties)
-				{
-					bool match = false;
+				continue;
+			}
+			auto* UEFunc = actor->FindFunction(FName(update.FunctionName));
+
+			auto* Found = NOSPropertyManager.FunctionsByContainerAndUEFunction.Find({ UnknownContainer, UEFunc });
+			if (!Found)
+			{
+				continue;
+			}
+
+			auto& func = *Found;
+
+			for (auto& prop : func->Properties)
+			{
+				bool match = false;
 						
-					if(!prop->Property)
+				if(!prop->Property)
+				{
+					// TODO: Checking with metadata should be enough by itself
+					if (prop->DisplayName == update.FunctionPropertyName)
+						match = true;
+					else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
+						propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
+						match = true;
+				}
+				else
+					if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
 					{
-						// TODO: Checking with metadata should be enough by itself
-						if (prop->DisplayName == update.FunctionPropertyName)
-							match = true;
-						else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
-							propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
-							match = true;
+						match = true;
 					}
-					else
-						if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
-						{
-							match = true;
-						}
 
-					if (!match)
-						continue;
+				if (!match)
+					continue;
 
-					PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id,
-						nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
-					auto NosProperty = prop;
-					NOSPortal NewPortal{update.pinId ,NosProperty->Id};
-					NewPortal.DisplayName = FString("");
-					UObject* parent = NosProperty->GetRawObjectContainer();
-					FString parentName = "";
-					FString parentUniqueName = "";
-					AActor* parentAsActor = nullptr;
-					while (parent)
+				PinUpdates.push_back(nos::CreatePartialPinUpdate(fb2, (nos::fb::UUID*)&update.pinId,  (nos::fb::UUID*)&prop->Id,
+					nos::fb::CreatePinOrphanStateDirect(fb2, nos::fb::PinOrphanStateType::ACTIVE)));
+				auto NosProperty = prop;
+				NOSPortal NewPortal{update.pinId ,NosProperty->Id};
+				NewPortal.DisplayName = FString("");
+				UObject* parent = NosProperty->GetRawObjectContainer();
+				FString parentName = "";
+				FString parentUniqueName = "";
+				AActor* parentAsActor = nullptr;
+				while (parent)
+				{
+					parentName = parent->GetFName().ToString();
+					parentUniqueName = parent->GetFName().ToString() + "-";
+					if (auto parentActor = Cast<AActor>(parent))
 					{
-						parentName = parent->GetFName().ToString();
-						parentUniqueName = parent->GetFName().ToString() + "-";
-						if (auto parentActor = Cast<AActor>(parent))
-						{
-							parentName = parentActor->GetActorLabel();
-							parentAsActor = parentActor;
-						}
-						if(auto component = Cast<USceneComponent>(parent))
-							parentName = component->GetName();
-						parentName += ".";
-						parent = parent->GetTypedOuter<AActor>();
+						parentName = parentActor->GetActorLabel();
+						parentAsActor = parentActor;
 					}
-					if (parentAsActor)
+					if(auto component = Cast<USceneComponent>(parent))
+						parentName = component->GetName();
+					parentName += ".";
+					parent = parent->GetTypedOuter<AActor>();
+				}
+				if (parentAsActor)
+				{
+					while (parentAsActor->GetSceneOutlinerParent())
 					{
-						while (parentAsActor->GetSceneOutlinerParent())
+						parentAsActor = parentAsActor->GetSceneOutlinerParent();
+						if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
 						{
-							parentAsActor = parentAsActor->GetSceneOutlinerParent();
-							if (auto actorNode = SceneTree.GetNodeFromActorId(parentAsActor->GetActorGuid()))
+							if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
 							{
-								if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
+								if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
 								{
-									if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
-									{
-										break;
-									}
+									break;
 								}
 							}
-							parentName = parentAsActor->GetActorLabel() + "." + parentName;
-							parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
 						}
+						parentName = parentAsActor->GetActorLabel() + "." + parentName;
+						parentUniqueName = parentAsActor->GetFName().ToString() + "-" + parentUniqueName;
 					}
-
-					NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
-					NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
-					NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
-					NewPortal.CategoryName = NosProperty->CategoryName;
-					NewPortal.ShowAs = update.pinShowAs;
-
-					NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
-					NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
-					NewPortals.push_back(NewPortal);
-					NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-					NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 				}
+
+				NewPortal.UniqueName = parentUniqueName + NosProperty->DisplayName;
+				NewPortal.DisplayName =  parentName + NosProperty->DisplayName;
+				NewPortal.TypeName = FString(NosProperty->TypeName.c_str());
+				NewPortal.CategoryName = NosProperty->CategoryName;
+				NewPortal.ShowAs = update.pinShowAs;
+
+				NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
+				NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
+				NewPortals.push_back(NewPortal);
+				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 			}
-			continue;
 		}
 
 		FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
@@ -2017,6 +2062,7 @@ TSharedPtr<NOSFunction> FNOSSceneTreeManager::AddFunctionToActorNode(ActorNode* 
 
 	actorNode->Functions.push_back(nosfunc);
 	RegisteredFunctions.Add(nosfunc->Id, nosfunc);
+	NOSPropertyManager.FunctionsByContainerAndUEFunction.Add({ Container, UEFunction }, nosfunc);
 	return nosfunc;
 }
 
