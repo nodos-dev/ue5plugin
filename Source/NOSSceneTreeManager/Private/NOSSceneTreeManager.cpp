@@ -1096,7 +1096,17 @@ void FNOSSceneTreeManager::OnActorDestroyed(AActor* InActor)
 	{
 		// delete functions
 		for (auto& Func : ActorNode->Functions)
+		{
 			RegisteredFunctions.Remove(Func->Id);
+			for(auto const& [key, valFunc] : NOSPropertyManager.FunctionsByContainerAndUEFunction)
+			{
+				if (valFunc.Get() == Func.Get())
+				{
+					NOSPropertyManager.FunctionsByContainerAndUEFunction.Remove(key);
+					break;
+				}
+			}
+		}
 	}
 	SendActorDeletedOnUpdate(InActor);
 	ActorsToBeAdded.Remove(InActor);
@@ -3703,6 +3713,7 @@ void FNOSPropertyManager::Reset(bool ResetPortals)
 
 	PropertiesById.Empty();
 	PropertiesByPropertyAndContainer.Empty();
+	FunctionsByContainerAndUEFunction.Empty();
 }
 
 void FNOSPropertyManager::OnBeginFrame()
