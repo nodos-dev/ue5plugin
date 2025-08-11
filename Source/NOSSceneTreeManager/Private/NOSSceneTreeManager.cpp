@@ -923,6 +923,7 @@ struct PropUpdate
 	FString FunctionName;
 	FGuid FunctionId;
 	FString FunctionPropertyName;
+	bool IsFunctionTrigger;
 };
 
 struct NodeAndActorGuid
@@ -1304,8 +1305,10 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				{
 					FunctionPropertyName = FString(entry->value()->c_str());
 				}
+
+				bool IsFunctionTrigger = prop->type_name()->string_view() == nos::exe::GetFullyQualifiedName();
 				
-				updates.push_back({ id, *(FGuid*)prop->id(),displayName, componentName, PropertyPath, ContainerPath,valcopy, valsize, defcopy, defsize, prop->show_as(), IsPortal, FunctionName, FunctionId, FunctionPropertyName});
+				updates.push_back({ id, *(FGuid*)prop->id(),displayName, componentName, PropertyPath, ContainerPath,valcopy, valsize, defcopy, defsize, prop->show_as(), IsPortal, FunctionName, FunctionId, FunctionPropertyName, IsFunctionTrigger});
 			}
 
 		}
@@ -1491,11 +1494,6 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				continue;
 			}
 
-			FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
-			if (!PropertyToUpdate)
-			{
-				continue;
-			}
 			void* UnknownContainer = Container;
 			if (!update.ContainerPath.IsEmpty())
 			{
@@ -1549,10 +1547,46 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				}
 			}
 
-			if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
-				continue;
-			NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
-			PropertiesNeeded.Add(nosprop->Id);
+			if (update.FunctionName.IsEmpty())
+			{
+				FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
+				if (!PropertyToUpdate)
+					continue;
+				if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
+					continue;
+				NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
+				PropertiesNeeded.Add(nosprop->Id);
+			}
+			else
+			{
+				if (!RegisteredFunctions.Contains(update.FunctionId))
+					continue;
+				auto func = RegisteredFunctions.FindRef(update.FunctionId);
+
+				for (auto prop : func->Properties)
+				{
+					bool match = false;
+
+					if (!prop->Property)
+					{
+						// TODO: Checking with metadata should be enough by itself
+						if (prop->DisplayName == update.FunctionPropertyName)
+							match = true;
+						else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
+							propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
+							match = true;
+					}
+					else
+						if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
+						{
+							match = true;
+						}
+
+					if (!match)
+						continue;
+					PropertiesNeeded.Add(prop->Id);
+				}
+			}
 		}
 
 		std::unordered_set<TreeNode*> NodesSentUpdated;
@@ -1590,11 +1624,6 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			continue;
 		}
 
-		FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
-		if (!PropertyToUpdate)
-		{
-			continue;
-		}
 		void* UnknownContainer = Container;
 		if (!update.ContainerPath.IsEmpty())
 		{
@@ -1692,7 +1721,12 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			}
 			continue;
 		}
-	
+
+		FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
+		if (!PropertyToUpdate)
+		{
+			continue;
+		}
 		if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyToUpdate, UnknownContainer}))
 		{
 			auto NosProperty = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyToUpdate, UnknownContainer});
