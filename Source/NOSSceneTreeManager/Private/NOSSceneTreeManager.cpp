@@ -1494,11 +1494,6 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				continue;
 			}
 
-			FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
-			if (!PropertyToUpdate && !update.IsFunctionTrigger)
-			{
-				continue;
-			}
 			void* UnknownContainer = Container;
 			if (!update.ContainerPath.IsEmpty())
 			{
@@ -1552,8 +1547,11 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				}
 			}
 
-			if (!update.IsFunctionTrigger)
+			if (update.FunctionName.IsEmpty())
 			{
+				FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
+				if (!PropertyToUpdate)
+					continue;
 				if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
 					continue;
 				NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
@@ -1561,17 +1559,32 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			}
 			else
 			{
-				if (auto Function = Container->FindFunction(FName(update.FunctionName)))
+				if (!RegisteredFunctions.Contains(update.FunctionId))
+					continue;
+				auto func = RegisteredFunctions.FindRef(update.FunctionId);
+
+				for (auto prop : func->Properties)
 				{
-					if (actor)
+					bool match = false;
+
+					if (!prop->Property)
 					{
-						ActorNode* actorNode = SceneTree.GetNode(actor);
-						for (auto func : actorNode->Functions)
-							if (func->Function == Function)
-								for (auto prop : func->Properties)
-									if (prop->TypeName == nos::exe::GetFullyQualifiedName())
-										PropertiesNeeded.Add(prop->Id);
+						// TODO: Checking with metadata should be enough by itself
+						if (prop->DisplayName == update.FunctionPropertyName)
+							match = true;
+						else if (auto propFuncPropName = prop->nosMetaDataMap.Find(NosMetadataKeys::FunctionPropertyName);
+							propFuncPropName && *propFuncPropName == update.FunctionPropertyName)
+							match = true;
 					}
+					else
+						if (prop->Property->GetFName().ToString() == update.FunctionPropertyName)
+						{
+							match = true;
+						}
+
+					if (!match)
+						continue;
+					PropertiesNeeded.Add(prop->Id);
 				}
 			}
 		}
@@ -1611,11 +1624,6 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			continue;
 		}
 
-		FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
-		if (!PropertyToUpdate)
-		{
-			continue;
-		}
 		void* UnknownContainer = Container;
 		if (!update.ContainerPath.IsEmpty())
 		{
@@ -1713,7 +1721,12 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			}
 			continue;
 		}
-	
+
+		FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
+		if (!PropertyToUpdate)
+		{
+			continue;
+		}
 		if (NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({PropertyToUpdate, UnknownContainer}))
 		{
 			auto NosProperty = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({PropertyToUpdate, UnknownContainer});
