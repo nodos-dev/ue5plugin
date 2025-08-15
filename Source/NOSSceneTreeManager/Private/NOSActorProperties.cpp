@@ -850,6 +850,13 @@ NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uprope
 {
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
 	{
+		if (auto actor = Cast<AActor>(container))
+		{
+			if (actor->ActorHasTag("UseActorLabelAsPinDisplayName"))
+			{
+				DisplayName = actor->GetActorLabel();
+			}
+		}
 		TypeName = "nos.sys.vulkan.Texture";
 		ReadOnly = true;
 		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(this);
