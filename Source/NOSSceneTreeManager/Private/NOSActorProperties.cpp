@@ -11,6 +11,8 @@
 #include "PropertyEditorModule.h"
 #include "Engine/Engine.h"
 #include <nosTrack/Track_generated.h>
+#include "NOSLinoChannel.h"
+#include <lino_generated.h>
 
 #define CHECK_PROP_SIZE() {if (size != Property->GetElementSize()){UE_LOG(LogNOSSceneTreeManager, Error, TEXT("Property size mismatch with Nodos"));return;}}
 
@@ -441,6 +443,110 @@ void NOSTrackProperty::SetProperty_InCont(void* container, void* val)
 	//	//actor->SetActorRelativeRotation(newTrack.rotation.Rotation());
 	//	//actor->SetActorRelativeRotation(newTrack.rotation.Rotation());
 	//}
+}
+
+void NOSLinoChannelProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)  
+{  
+   IsChanged = true;  
+
+   void* container = nullptr;  
+   if (customContainer) container = customContainer;  
+   else if (ComponentContainer) container = ComponentContainer.Get();  
+   else if (ActorContainer) container = ActorContainer.Get();  
+   else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;  
+   else if (StructPtr) container = StructPtr;  
+
+   if (!container)  
+   {  
+       UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));  
+       return;  
+   }  
+
+   SetProperty_InCont(container, val);  
+   MarkState();  
+}  
+
+bool NOSLinoChannelProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)  
+{  
+   std::vector<flatbuffers::Offset<nos::sys::lino::Channel>> LinoChannelArray;  
+   for (int i = 0; i < ArrayHelper.Num(); i++)  
+   {  
+       if (auto ElementPtr = ArrayHelper.GetRawPtr(i))  
+       {  
+           FNOSLinoChannel LinoChannelData = *(FNOSLinoChannel*)ElementPtr;  
+		   nos::sys::lino::TChannel TempChannel;
+		   TempChannel.name = std::string(TCHAR_TO_UTF8(*LinoChannelData.Name.ToString()));
+		   TempChannel.size->mutate_x(LinoChannelData.Size.X);
+		   TempChannel.size->mutate_y(LinoChannelData.Size.Y);
+
+           auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
+           LinoChannelArray.push_back(offset);  
+       }  
+   }  
+   auto offset = fb.CreateVector(LinoChannelArray).o;  
+   fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::sys::lino::Channel>>(offset));
+
+   return true;  
+}  
+
+void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)  
+{  
+   auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::sys::lino::Channel>>*)val;
+   int ct = vec->size();  
+   ArrayHelper.Resize(ct);  
+   for (int i = 0; i < ct; i++)  
+   {  
+       ArrayHelper.ExpandForIndex(i);  
+       auto channel = vec->Get(i);  
+
+       FNOSLinoChannel* LinoChannelData = (FNOSLinoChannel*)ArrayHelper.GetRawPtr(i);  
+       *LinoChannelData = {};  
+
+	   nos::sys::lino::TChannel Channel;
+       channel->UnPackTo(&Channel);
+
+       LinoChannelData->Name = FName(Channel.name.c_str());
+	   LinoChannelData->Size = FIntPoint(Channel.size->x(), Channel.size->y());
+   }  
+}  
+
+void NOSLinoChannelProperty::SetProperty_InCont(void* container, void* val)  
+{  
+   auto channel = flatbuffers::GetRoot<nos::sys::lino::Channel>(val);
+   FNOSLinoChannel* LinoChannelData = structprop->ContainerPtrToValuePtr<FNOSLinoChannel>(container);  
+
+   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_NAME))
+   {
+       LinoChannelData->Name = FName(channel->name()->c_str());
+   }  
+   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
+   {  
+	   LinoChannelData->Size = FIntPoint(channel->size()->x(), channel->size()->y());
+   }  
+}
+
+std::vector<uint8> NOSLinoChannelProperty::UpdatePinValue(uint8* customContainer)
+{
+	void* container = nullptr;
+	if (customContainer) container = customContainer;
+	else if (ComponentContainer) container = ComponentContainer.Get();
+	else if (ActorContainer) container = ActorContainer.Get();
+	else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;
+	else if (StructPtr) container = StructPtr;
+
+	if (container)
+	{
+		FNOSLinoChannel ChannelData = *Property->ContainerPtrToValuePtr<FNOSLinoChannel>(container);
+
+		flatbuffers::FlatBufferBuilder fb;
+		nos::sys::lino::TChannel TempChannel;
+		//TODO
+		auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
+		fb.Finish(offset);
+		nos::Buffer buffer = fb.Release();
+		data = buffer;
+	}
+	return data;
 }
 
 std::vector<uint8> NOSTransformProperty::UpdatePinValue(uint8* customContainer)
@@ -1459,6 +1565,10 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		else if (structprop->Struct == TBaseStructure<FColor>::Get()) //track
 		{
 			prop = TSharedPtr<NOSProperty>(new NOSColorProperty(container, structprop, parentCategory, StructPtr, parentProperty));
+		}
+		else if (structprop->Struct == FNOSLinoChannel::StaticStruct()) //track
+		{
+			prop = TSharedPtr<NOSProperty>(new NOSLinoChannelProperty(container, structprop, parentCategory, StructPtr, parentProperty));
 		}
 		else //auto construct
 		{

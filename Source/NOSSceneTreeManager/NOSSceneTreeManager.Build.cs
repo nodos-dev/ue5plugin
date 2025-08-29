@@ -32,6 +32,7 @@ public class NOSSceneTreeManager : ModuleRules
 				PublicIncludePaths.Add(SDKIncludeDir);
 				PublicIncludePaths.Add(dirs?.VulkanSubsystemIncludeDir);
 				PublicIncludePaths.Add(dirs?.TrackIncludeDir);
+				PublicIncludePaths.Add(dirs?.LinoIncludeDir);
 
 				//System.Console.WriteLine("Using Nodos SDK in " + dirs?.NodosSDKDir);
 				//System.Console.WriteLine("Using nos.sys.vulkan headers from " + dirs?.VulkanSubsystemIncludeDir);

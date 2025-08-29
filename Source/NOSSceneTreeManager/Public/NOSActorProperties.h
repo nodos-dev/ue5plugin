@@ -608,6 +608,30 @@ protected:
 	virtual void SetProperty_InCont(void* container, void* val) override;
 };
 
+class NOSLinoChannelProperty : public NOSProperty
+{
+public:
+	NOSLinoChannelProperty(UObject* container, FStructProperty* uproperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr)
+		: NOSProperty(container, uproperty, parentCategory, StructPtr, parentProperty), structprop(uproperty)
+	{
+		
+		data = std::vector<uint8_t>(1, 0);
+		TypeName = "nos.sys.lino.Channel";
+	}
+	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
+
+	//virtual flatbuffers::Offset<nos::fb::Pin> Serialize(flatbuffers::FlatBufferBuilder& fbb) override;
+	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
+
+	FStructProperty* structprop;
+
+	virtual bool CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	virtual void SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper) override;
+	
+protected:
+	virtual void SetProperty_InCont(void* container, void* val) override;
+};
+
 
 class NOSTransformProperty : public NOSProperty
 {

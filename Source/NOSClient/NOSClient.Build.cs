@@ -13,15 +13,20 @@ public struct NosIncludeDirs
 	public string NodosSDKDir;
 	public string VulkanSubsystemIncludeDir;
 	public string TrackIncludeDir;
-	public NosIncludeDirs(string NodosSDKDir, string VulkanSubsystemIncludeDir, string TrackIncludeDir)
+	public string LinoIncludeDir;
+	public NosIncludeDirs(string NodosSDKDir, string VulkanSubsystemIncludeDir, string TrackIncludeDir, string LinoIncludeDir)
 	{
 		this.NodosSDKDir = NodosSDKDir;
 		this.VulkanSubsystemIncludeDir = VulkanSubsystemIncludeDir;
 		this.TrackIncludeDir = TrackIncludeDir;
+		this.LinoIncludeDir = LinoIncludeDir;
 	}
 	public bool IsAllOk()
 	{
-		return !String.IsNullOrEmpty(NodosSDKDir) && !String.IsNullOrEmpty(VulkanSubsystemIncludeDir) && !String.IsNullOrEmpty(TrackIncludeDir);
+		return !String.IsNullOrEmpty(NodosSDKDir) && 
+			   !String.IsNullOrEmpty(VulkanSubsystemIncludeDir) && 
+			   !String.IsNullOrEmpty(TrackIncludeDir) &&
+			   !String.IsNullOrEmpty(LinoIncludeDir);
 	}
 }
 
@@ -204,8 +209,9 @@ public class NOSClient : ModuleRules
 
 		string VulkanSubsystemIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.vulkan", "6.0");
 		string TrackIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.track", "1.9");
+		string LinoIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.lino", "1.0");
 
-		return new NosIncludeDirs(NodosSDKDir, VulkanSubsystemIncludeDir, TrackIncludeDir);
+		return new NosIncludeDirs(NodosSDKDir, VulkanSubsystemIncludeDir, TrackIncludeDir, LinoIncludeDir);
 	}
 
 	public NOSClient(ReadOnlyTargetRules Target) : base(Target)
