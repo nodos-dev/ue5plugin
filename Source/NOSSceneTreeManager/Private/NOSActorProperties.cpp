@@ -956,13 +956,13 @@ NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uprope
 {
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
 	{
-		if (auto actor = Cast<AActor>(container))
-		{
-			if (actor->ActorHasTag("UseActorLabelAsPinDisplayName"))
-			{
-				DisplayName = actor->GetActorLabel();
-			}
-		}
+		//if (auto actor = Cast<AActor>(container))
+		//{
+		//	if (actor->ActorHasTag("UseActorLabelAsPinDisplayName"))
+		//	{
+		//		DisplayName = actor->GetActorLabel();
+		//	}
+		//}
 		TypeName = "nos.sys.vulkan.Texture";
 		ReadOnly = true;
 		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(this);
@@ -1422,7 +1422,8 @@ bool IsArrayPropertySupported(FArrayProperty* ArrayProperty)
 			structprop->Struct == TBaseStructure<FVector4>::Get() ||
 			structprop->Struct == TBaseStructure<FLinearColor>::Get() ||
 			structprop->Struct == TBaseStructure<FNOSTrack>::Get() ||
-			structprop->Struct == TBaseStructure<FColor>::Get())
+			structprop->Struct == TBaseStructure<FColor>::Get() ||
+			structprop->Struct == TBaseStructure<FNOSLinoChannel>::Get())
 			return true;
 	}
 	
@@ -1566,7 +1567,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		{
 			prop = TSharedPtr<NOSProperty>(new NOSColorProperty(container, structprop, parentCategory, StructPtr, parentProperty));
 		}
-		else if (structprop->Struct == FNOSLinoChannel::StaticStruct()) //track
+		else if (structprop->Struct == FNOSLinoChannel::StaticStruct()) //lino
 		{
 			prop = TSharedPtr<NOSProperty>(new NOSLinoChannelProperty(container, structprop, parentCategory, StructPtr, parentProperty));
 		}

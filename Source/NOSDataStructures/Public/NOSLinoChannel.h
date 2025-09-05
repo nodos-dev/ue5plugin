@@ -5,7 +5,7 @@
 #pragma once
 //#if WITH_EDITORONLY_DATA
 #include "NOSLinoChannel.generated.h"
-/** Track data used for connecting with Nodos */
+
 USTRUCT(Blueprintable)
 struct NOSDATASTRUCTURES_API FNOSLinoChannel
 {

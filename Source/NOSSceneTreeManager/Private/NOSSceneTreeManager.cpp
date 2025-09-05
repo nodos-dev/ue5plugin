@@ -939,7 +939,6 @@ struct NodeSpawnInfo
 	bool DontAttachToRealityParent = false;
 };
 
-
 void GetNodesSpawnedByNodos(const nos::fb::Node* node, TMap<TPair<FGuid, FGuid>, NodeSpawnInfo>& spawnedByNodos)
 {
 	if (flatbuffers::IsFieldPresent(node, nos::fb::Node::VT_META_DATA_MAP))
@@ -1390,7 +1389,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		
 	for (auto [oldGuid, spawnInfo] : spawnedByNodos)
 	{
-		if(spawnInfo.SpawnTag == "RealityParentTransform")
+		if (spawnInfo.SpawnTag == "RealityParentTransform")
 		{
 			continue;
 		}
@@ -3232,7 +3231,6 @@ void FNOSSceneTreeManager::HandleEndPIE(bool bIsSimulating)
 	FNOSSceneTreeManager::daWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
 	FNOSSceneTreeManager::daWorld->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
 }
-
 
 AActor* FNOSActorManager::GetParentTransformActor()
 {
