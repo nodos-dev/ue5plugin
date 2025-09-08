@@ -89,7 +89,6 @@ public:
 	void PostSave(UWorld* World, FObjectPostSaveContext Context);
 
 	NOSActorReference ParentTransformActor;
-	NOSActorReference LinoManager;
 
 	NOSSceneTree& SceneTree;
 	class FNOSAssetManager* NOSAssetManager;

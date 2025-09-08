@@ -496,17 +496,20 @@ void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptA
    ArrayHelper.Resize(ct);  
    for (int i = 0; i < ct; i++)  
    {  
-       ArrayHelper.ExpandForIndex(i);  
-       auto channel = vec->Get(i);  
+		ArrayHelper.ExpandForIndex(i);  
+		auto channel = vec->Get(i);  
 
-       FNOSLinoChannel* LinoChannelData = (FNOSLinoChannel*)ArrayHelper.GetRawPtr(i);  
-       *LinoChannelData = {};  
+		FNOSLinoChannel* LinoChannelData = (FNOSLinoChannel*)ArrayHelper.GetRawPtr(i);  
+		*LinoChannelData = {};  
 
-	   nos::sys::lino::TChannel Channel;
-       channel->UnPackTo(&Channel);
+		nos::sys::lino::TChannel Channel;
+		channel->UnPackTo(&Channel);
 
-       LinoChannelData->Name = FName(Channel.name.c_str());
-	   LinoChannelData->Size = FIntPoint(Channel.size->x(), Channel.size->y());
+		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_NAME))
+			LinoChannelData->Name = FName(Channel.name.c_str());
+
+		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
+			LinoChannelData->Size = FIntPoint(Channel.size->x(), Channel.size->y());
    }  
 }  
 
@@ -1569,6 +1572,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		}
 		else if (structprop->Struct == FNOSLinoChannel::StaticStruct()) //lino
 		{
+			// TODO: We need to be able to register new type factories in derived plugins (this code belongs to Reality plugin)
 			prop = TSharedPtr<NOSProperty>(new NOSLinoChannelProperty(container, structprop, parentCategory, StructPtr, parentProperty));
 		}
 		else //auto construct
