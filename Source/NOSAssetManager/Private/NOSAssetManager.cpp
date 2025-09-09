@@ -279,6 +279,7 @@ void FNOSAssetManager::SetupCustomSpawns()
 			sp.bHideFromSceneOutliner = true;
 			sp.Name = "Reality Parent Transform Actor";
 			sp.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
+			
 			AActor* SpawnedActor = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->SpawnActor(AActor::StaticClass(), &Transform, sp);
 			SpawnedActor->SetActorLabel("Reality Parent Transform Actor");
 			auto RootComponent = NewObject<USceneComponent>(SpawnedActor, FName("DefaultSceneRoot"));

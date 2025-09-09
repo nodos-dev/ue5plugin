@@ -81,6 +81,7 @@ public:
 	AActor* SpawnActor(FString SpawnTag, NOSSpawnActorParameters Params = {}, TMap<FString, FString> Metadata = {});
 	AActor* SpawnUMGRenderManager(FString umgTag,UUserWidget* widget);
 	void ClearActors();
+	AActor* GetRealityLinoManager();
 	
 	void ReAddActorsToSceneTree();
 
@@ -88,7 +89,9 @@ public:
 	void PreSave(UWorld* World, FObjectPreSaveContext Context);
 	void PostSave(UWorld* World, FObjectPostSaveContext Context);
 
+
 	NOSActorReference ParentTransformActor;
+	NOSActorReference RealityLinoManager;
 
 	NOSSceneTree& SceneTree;
 	class FNOSAssetManager* NOSAssetManager;

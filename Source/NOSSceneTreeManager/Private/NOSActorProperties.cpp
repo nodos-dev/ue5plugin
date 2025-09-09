@@ -476,8 +476,8 @@ bool NOSLinoChannelProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, F
            FNOSLinoChannel LinoChannelData = *(FNOSLinoChannel*)ElementPtr;  
 		   nos::sys::lino::TChannel TempChannel;
 		   TempChannel.name = std::string(TCHAR_TO_UTF8(*LinoChannelData.Name.ToString()));
-		   TempChannel.size->mutate_x(LinoChannelData.Size.X);
-		   TempChannel.size->mutate_y(LinoChannelData.Size.Y);
+		   TempChannel.size.mutate_x(LinoChannelData.Size.X);
+		   TempChannel.size.mutate_y(LinoChannelData.Size.Y);
 
            auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
            LinoChannelArray.push_back(offset);  
@@ -509,7 +509,7 @@ void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptA
 			LinoChannelData->Name = FName(Channel.name.c_str());
 
 		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
-			LinoChannelData->Size = FIntPoint(Channel.size->x(), Channel.size->y());
+			LinoChannelData->Size = FIntPoint(Channel.size.x(), Channel.size.y());
    }  
 }  
 
