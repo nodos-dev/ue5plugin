@@ -49,7 +49,6 @@ public:
 	FNOSClient* NOSClient = nullptr;
 	NOSSceneTree& SceneTree;
 
-	TMap<FGuid, TSharedPtr<NOSProperty>> customProperties;
 	TMap<FGuid, FGuid> PropertyToPortalPin;
 	TMap<FGuid, NOSPortal> PortalPinsById;
 	TMap<FGuid, TSharedPtr<NOSProperty>> PropertiesById;
