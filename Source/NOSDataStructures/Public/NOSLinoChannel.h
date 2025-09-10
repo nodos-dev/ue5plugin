@@ -18,4 +18,10 @@ public:
 	/** Please add a variable description */
 	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "Size", Category = ""))
 	FIntPoint Size = FIntPoint(1920, 1080);
+
+	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "RenderTarget", Category = ""))
+	class UTextureRenderTarget2D* RenderTarget = nullptr;
+
+	class NOSProperty* property = nullptr;
+	bool UpdateRenderTarget(class UWorld* world);
 };
