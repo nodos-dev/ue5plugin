@@ -1426,7 +1426,8 @@ bool IsArrayPropertySupported(FArrayProperty* ArrayProperty)
 			structprop->Struct == TBaseStructure<FLinearColor>::Get() ||
 			structprop->Struct == TBaseStructure<FNOSTrack>::Get() ||
 			structprop->Struct == TBaseStructure<FColor>::Get() ||
-			structprop->Struct == TBaseStructure<FNOSLinoChannel>::Get())
+			structprop->Struct == TBaseStructure<FNOSLinoChannel>::Get() || 
+			structprop->Struct == FNOSLinoChannel::StaticStruct())
 			return true;
 	}
 	
