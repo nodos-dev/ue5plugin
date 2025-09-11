@@ -91,6 +91,12 @@ public:
 		return Get();
 	}
 
+	template<typename T>
+	T* As()
+	{
+		return Cast<T>(Get());
+	}
+
 	bool UpdateActorPointer(UWorld* World);
 	bool UpdateActualActorPointer();
 

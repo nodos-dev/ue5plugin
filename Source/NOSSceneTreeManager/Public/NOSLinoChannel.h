@@ -4,10 +4,11 @@
 
 #pragma once
 //#if WITH_EDITORONLY_DATA
+#include "NOSActorProperties.h"
 #include "NOSLinoChannel.generated.h"
 
 USTRUCT(Blueprintable)
-struct NOSDATASTRUCTURES_API FNOSLinoChannel
+struct NOSSCENETREEMANAGER_API FNOSLinoChannel
 {
 	GENERATED_BODY()
 public:
@@ -19,9 +20,6 @@ public:
 	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "Size", Category = ""))
 	FIntPoint Size = FIntPoint(1920, 1080);
 
-	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "RenderTarget", Category = ""))
-	class UTextureRenderTarget2D* RenderTarget = nullptr;
-
-	bool UpdateRenderTarget(class UWorld* world);
+	NOSActorReference Actor;
 	bool ValidateUpdateSize();
 };
