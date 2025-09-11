@@ -22,6 +22,6 @@ public:
 	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "RenderTarget", Category = ""))
 	class UTextureRenderTarget2D* RenderTarget = nullptr;
 
-	class NOSProperty* property = nullptr;
 	bool UpdateRenderTarget(class UWorld* world);
+	bool ValidateUpdateSize();
 };
