@@ -3234,6 +3234,7 @@ void FNOSSceneTreeManager::HandleEndPIE(bool bIsSimulating)
 
 AActor* FNOSActorManager::GetParentTransformActor()
 {
+	// TODO: check for spawned instances also
 	if(!ParentTransformActor.Get())
 	{
 		ParentTransformActor = NOSActorReference(SpawnActor("RealityParentTransform"));
@@ -3246,6 +3247,20 @@ AActor* FNOSActorManager::GetParentTransformActor()
 AActor* FNOSActorManager::GetRealityLinoManager()
 {
 	if(!RealityLinoManager.Get())
+	{
+		if (!FNOSSceneTreeManager::daWorld)
+			return nullptr;
+
+		for (TActorIterator<AActor> It(FNOSSceneTreeManager::daWorld); It; ++It)
+		{
+			AActor* Actor = *It;
+			if (Actor && Actor->GetActorLabel() == "RealityLinoManager")
+			{
+				RealityLinoManager = NOSActorReference(Actor);
+			}
+		}
+	}
+	if (!RealityLinoManager.Get())
 	{
 		RealityLinoManager = NOSActorReference(SpawnActor("RealityLinoManager"));
 		RealityLinoManager->GetRootComponent()->SetMobility(EComponentMobility::Static);
