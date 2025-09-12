@@ -49,7 +49,6 @@ public:
 	FNOSClient* NOSClient = nullptr;
 	NOSSceneTree& SceneTree;
 
-	TMap<FGuid, TSharedPtr<NOSProperty>> customProperties;
 	TMap<FGuid, FGuid> PropertyToPortalPin;
 	TMap<FGuid, NOSPortal> PortalPinsById;
 	TMap<FGuid, TSharedPtr<NOSProperty>> PropertiesById;
@@ -81,6 +80,7 @@ public:
 	AActor* SpawnActor(FString SpawnTag, NOSSpawnActorParameters Params = {}, TMap<FString, FString> Metadata = {});
 	AActor* SpawnUMGRenderManager(FString umgTag,UUserWidget* widget);
 	void ClearActors();
+	AActor* GetRealityLinoManager();
 	
 	void ReAddActorsToSceneTree();
 
@@ -88,7 +88,9 @@ public:
 	void PreSave(UWorld* World, FObjectPreSaveContext Context);
 	void PostSave(UWorld* World, FObjectPostSaveContext Context);
 
+
 	NOSActorReference ParentTransformActor;
+	NOSActorReference RealityLinoManager;
 
 	NOSSceneTree& SceneTree;
 	class FNOSAssetManager* NOSAssetManager;

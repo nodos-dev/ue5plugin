@@ -749,7 +749,9 @@ void FNOSSceneTreeManager::OnNOSContextMenuRequested(nos::app::AppContextMenuReq
 
 			if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
 			{
-				if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
+				auto spawnTag = actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag);
+				if (spawnTag == "RealityParentTransform" || 
+					spawnTag == "RealityLinoManager")
 				{
 					return;
 				}
@@ -938,7 +940,6 @@ struct NodeSpawnInfo
 	FString SpawnTag;
 	bool DontAttachToRealityParent = false;
 };
-
 
 void GetNodesSpawnedByNodos(const nos::fb::Node* node, TMap<TPair<FGuid, FGuid>, NodeSpawnInfo>& spawnedByNodos)
 {
@@ -1363,34 +1364,28 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		}
 	}
 
-	FGuid OldParentTransformId = {};
 	for (auto [oldGuid, spawnInfo] : spawnedByNodos)
 	{
-		if(spawnInfo.SpawnTag == "RealityParentTransform")
+		if (spawnInfo.SpawnTag == "RealityParentTransform")
 		{
 			AActor* spawnedActor = NOSActorManager->SpawnActor(spawnInfo.SpawnTag);
 			sceneActorMap.Add(oldGuid.Key, spawnedActor); //this will map the old id with spawned actor in order to match the old properties (imported from disk)
 			NOSActorManager->ParentTransformActor = NOSActorReference(spawnedActor);
 			NOSActorManager->ParentTransformActor->GetRootComponent()->SetMobility(EComponentMobility::Static);
-			OldParentTransformId = oldGuid.Key;
 		}
-	}
-	if(OldParentTransformId.IsValid())
-	{
-		// NodeAndActorGuid nog;
-		// for(auto& [key, _]: spawnedByNodos)
-		// {
-		// 	if(key.key == OldParentTransformId)
-		// 	{
-		// 		nog = key;
-		// 	}	
-		// }
-		//spawnedByNodos.Remove(nog);
+		if (spawnInfo.SpawnTag == "RealityLinoManager")
+		{
+			AActor* spawnedActor = NOSActorManager->SpawnActor(spawnInfo.SpawnTag);
+			sceneActorMap.Add(oldGuid.Key, spawnedActor); //this will map the old id with spawned actor in order to match the old properties (imported from disk)
+			NOSActorManager->RealityLinoManager = NOSActorReference(spawnedActor);
+			NOSActorManager->RealityLinoManager->GetRootComponent()->SetMobility(EComponentMobility::Static);
+		}
 	}
 		
 	for (auto [oldGuid, spawnInfo] : spawnedByNodos)
 	{
-		if(spawnInfo.SpawnTag == "RealityParentTransform")
+		if (spawnInfo.SpawnTag == "RealityParentTransform" || 
+			spawnInfo.SpawnTag == "RealityLinoManager")
 		{
 			continue;
 		}
@@ -1752,7 +1747,9 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 						{
 							if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
 							{
-								if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
+								auto spawnTag = actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag);
+								if (spawnTag == FString("RealityParentTransform") ||
+									spawnTag == "RealityLinoManager")
 								{
 									break;
 								}
@@ -1816,7 +1813,9 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 					{
 						if (actorNode->nosMetaData.Contains(NosMetadataKeys::spawnTag))
 						{
-							if (actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag) == FString("RealityParentTransform"))
+							auto spawnTag = actorNode->nosMetaData.FindRef(NosMetadataKeys::spawnTag);
+							if (spawnTag == FString("RealityParentTransform") ||
+								spawnTag == "RealityLinoManager")
 							{
 								break;
 							}
@@ -3233,9 +3232,9 @@ void FNOSSceneTreeManager::HandleEndPIE(bool bIsSimulating)
 	FNOSSceneTreeManager::daWorld->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
 }
 
-
 AActor* FNOSActorManager::GetParentTransformActor()
 {
+	// TODO: check for spawned instances also
 	if(!ParentTransformActor.Get())
 	{
 		ParentTransformActor = NOSActorReference(SpawnActor("RealityParentTransform"));
@@ -3243,6 +3242,31 @@ AActor* FNOSActorManager::GetParentTransformActor()
 	}
 
 	return ParentTransformActor.Get();
+}
+
+AActor* FNOSActorManager::GetRealityLinoManager()
+{
+	if(!RealityLinoManager.Get())
+	{
+		if (!FNOSSceneTreeManager::daWorld)
+			return nullptr;
+
+		for (TActorIterator<AActor> It(FNOSSceneTreeManager::daWorld); It; ++It)
+		{
+			AActor* Actor = *It;
+			if (Actor && Actor->GetActorLabel() == "RealityLinoManager")
+			{
+				RealityLinoManager = NOSActorReference(Actor);
+			}
+		}
+	}
+	if (!RealityLinoManager.Get())
+	{
+		RealityLinoManager = NOSActorReference(SpawnActor("RealityLinoManager"));
+		RealityLinoManager->GetRootComponent()->SetMobility(EComponentMobility::Static);
+	}
+
+	return RealityLinoManager.Get();
 }
 
 AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters Params, TMap<FString, FString> Metadata)
