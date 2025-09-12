@@ -4,7 +4,7 @@
 
 #pragma once
 //#if WITH_EDITORONLY_DATA
-#include "NOSActorProperties.h"
+//#include "NOSActorProperties.h"
 #include "NOSLinoChannel.generated.h"
 
 USTRUCT(Blueprintable)
@@ -20,6 +20,5 @@ public:
 	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "Size", Category = ""))
 	FIntPoint Size = FIntPoint(1920, 1080);
 
-	NOSActorReference Actor;
 	bool ValidateUpdateSize();
 };
