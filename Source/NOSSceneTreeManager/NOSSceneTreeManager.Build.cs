@@ -26,7 +26,7 @@ public class NOSSceneTreeManager : ModuleRules
 					throw new BuildException(errorMessage);
 				}
 
-				var SDKIncludeDir = Path.Combine(dirs?.NodosSDKDir, "include");
+				var SDKIncludeDir = Path.Combine(dirs?.NodosSDKDir, "Include");
 
 				PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
 				PublicIncludePaths.Add(SDKIncludeDir);

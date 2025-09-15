@@ -224,7 +224,7 @@ public class NOSClient : ModuleRules
 					LogError(errorMessage, true);
 				}
 
-				var SDKIncludeDir = Path.Combine(dirs?.NodosSDKDir, "include");
+				var SDKIncludeDir = Path.Combine(dirs?.NodosSDKDir, "Include");
 
 				PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
 				PublicIncludePaths.Add(SDKIncludeDir);

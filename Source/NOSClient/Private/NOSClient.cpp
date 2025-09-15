@@ -81,7 +81,7 @@ FString FNodos::GetNodosSDKDir()
 bool FNodos::Initialize()
 {
 	FString SdkPath = GetNodosSDKDir();
-	FString SdkBinPath = FPaths::Combine(SdkPath, TEXT("bin"));
+	FString SdkBinPath = FPaths::Combine(SdkPath, TEXT("Binaries"));
 	FPlatformProcess::PushDllDirectory(*SdkBinPath);
 	FString SdkDllPath = FPaths::Combine(SdkBinPath, "nosAppSDK.dll");
 
