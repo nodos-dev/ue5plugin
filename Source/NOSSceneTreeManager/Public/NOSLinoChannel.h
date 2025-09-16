@@ -18,7 +18,7 @@ public:
 
 	/** Please add a variable description */
 	UPROPERTY(BlueprintReadWrite, meta = (DisplayName = "Size", Category = ""))
-	FIntPoint Size = FIntPoint(1920, 1080);
+	FIntPoint Size;
 
 	bool ValidateUpdateSize();
 };
