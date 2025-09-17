@@ -23,6 +23,7 @@
 #include "Misc/MessageDialog.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/Blueprint.h"
+#include "Blueprint/UserWidget.h"
 
 DEFINE_LOG_CATEGORY(LogNOSSceneTreeManager);
 #define LOG(x) UE_LOG(LogNOSSceneTreeManager, Display, TEXT(x))

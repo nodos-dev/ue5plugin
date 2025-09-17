@@ -101,13 +101,6 @@ public class NOSSceneTreeManager : ModuleRules
 				AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
 
 				PublicDefinitions.Add("PLATFORM_WIN64");
-				PrivateIncludePaths.AddRange(
-					new string[]{
-						//required for "D3D12RHIPrivate.h"
-						Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private"),
-					});
-
-
 			}
 		}
 		else 

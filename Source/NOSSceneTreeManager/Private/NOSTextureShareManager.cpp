@@ -13,11 +13,8 @@
 #include <d3d12.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 
-#include "D3D12RHIPrivate.h"
 #include "D3D12RHI.h"
-#include "D3D12Resources.h"
 #include "ID3D12DynamicRHI.h"
-#include "D3D12CommandContext.h"
 #include "RHI.h"
 #include "NOSActorProperties.h"
 #include "RHIResources.h"
@@ -181,9 +178,8 @@ bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sy
 		return false;
 	}
 	FRHITexture* RHITexture = RHIResource;
-	FD3D12Texture* Result((FD3D12Texture*)RHITexture->GetTextureBaseRHI());
-	
-	ID3D12Resource* DXResource = Result->GetResource()->GetResource();
+
+	ID3D12Resource* DXResource = static_cast<ID3D12Resource*>(RHITexture->GetNativeResource());
     DXResource->SetName(*nosprop->DisplayName);
 	
 	HANDLE handle = 0;
