@@ -625,6 +625,7 @@ void FNOSSceneTreeManager::OnNOSPinValueChanged(nos::fb::UUID const& pinId, uint
 		nosprop->SetPropValue((void*)copy.data(), size);
 		return;
 	}
+
 	SetPropertyValue(Id, (void*)data, size);
 }
 
@@ -3748,20 +3749,23 @@ void FNOSPropertyManager::OnBeginFrame()
 		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter);
 		for (auto& [id, val] : executeInfo.PinValueUpdates)
 		{
-			FGuid guid = *(FGuid*)&id;
-			if (auto* NosPropertyIt = PropertiesById.Find(guid))
-			{
-				auto NosProperty = *NosPropertyIt;
-				if (!NosProperty->GetRawContainer())
-				{
-					return;
-				}
-				if (!PropertyToPortalPin.Contains(guid))
-				{
-					CreatePortal(guid, nos::fb::ShowAs::PROPERTY);
-				}
-				NosProperty->SetPropValue(val.Data(), val.Size());
-			}
+			NOSClient->OnNOSPinValueChanged.Broadcast(*(nos::fb::UUID*)&id, val.As<u8>(), val.Size(), false);
+
+
+		//	FGuid guid = *(FGuid*)&id;
+		//	if (auto* NosPropertyIt = PropertiesById.Find(guid))
+		//	{
+		//		auto NosProperty = *NosPropertyIt;
+		//		if (!NosProperty->GetRawContainer())
+		//		{
+		//			return;
+		//		}
+		//		if (!PropertyToPortalPin.Contains(guid))
+		//		{
+		//			CreatePortal(guid, nos::fb::ShowAs::PROPERTY);
+		//		}
+		//		NosProperty->SetPropValue(val.Data(), val.Size());
+		//	}
 		}
 	}
 	for (auto [id, portal] : PortalPinsById)
