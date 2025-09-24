@@ -186,6 +186,49 @@ private:
 	static void* LibHandle;
 };
 
+template <typename DelegateT>
+class Chain : public DelegateT
+{
+public:
+	using Super = DelegateT;
+	using HandleT = FDelegateHandle;
+
+	// expose head bind API
+	using Super::AddRaw;
+	using Super::AddUObject;
+	using Super::AddSP;
+	using Super::AddLambda;
+	using Super::Remove;
+	using Super::Clear;
+	using Super::IsBound;
+
+	// tail access
+	DelegateT& Tail() { return TailDelegate; }
+	const DelegateT& Tail() const { return TailDelegate; }
+
+	// tail bind helpers
+	template <typename UserClass>
+	HandleT AddTailRaw(UserClass* Obj, auto Method) { return TailDelegate.AddRaw(Obj, Method); }
+	template <typename UserClass>
+	HandleT AddTailUObject(UserClass* Obj, auto Method) { return TailDelegate.AddUObject(Obj, Method); }
+	template <typename UserClass, ESPMode Mode>
+	HandleT AddTailSP(TSharedPtr<UserClass, Mode> Obj, auto Method) { return TailDelegate.AddSP(Obj, Method); }
+	template <typename Functor>
+	HandleT AddTailLambda(Functor&& Fn) { return TailDelegate.AddLambda(Forward<Functor>(Fn)); }
+
+	// chained broadcast: head then tail (perfect-forwarded)
+	template <typename... CallArgs>
+	void Broadcast(CallArgs&&... a)
+	{
+		Super::Broadcast(Forward<CallArgs>(a)...);
+		TailDelegate.Broadcast(Forward<CallArgs>(a)...);
+	}
+
+	void ClearAll() { Super::Clear(); TailDelegate.Clear(); }
+
+private:
+	DelegateT TailDelegate;
+};
 
 
 class NOSCLIENT_API FNOSClient : public IModuleInterface {
@@ -256,17 +299,17 @@ public:
 
 	TMap<FGuid, FName> PathUpdates;
 
-	FNOSNodeConnected OnNOSConnected;
-	FNOSNodeUpdated OnNOSNodeUpdated;
-	FNOSContextMenuRequested OnNOSContextMenuRequested;
-	FNOSContextMenuCommandFired OnNOSContextMenuCommandFired;
-	FNOSNodeRemoved OnNOSNodeRemoved;
-	FNOSPinValueChanged OnNOSPinValueChanged;
-	FNOSPinShowAsChanged OnNOSPinShowAsChanged;
-	FNOSFunctionCalled OnNOSFunctionCalled;
-	FNOSNodeSelected OnNOSNodeSelected;
-	FNOSNodeImported OnNOSNodeImported;
-	FNOSConnectionClosed OnNOSConnectionClosed;
+	Chain<FNOSNodeConnected> OnNOSConnected;
+	Chain<FNOSNodeUpdated> OnNOSNodeUpdated;
+	Chain<FNOSContextMenuRequested> OnNOSContextMenuRequested;
+	Chain<FNOSContextMenuCommandFired> OnNOSContextMenuCommandFired;
+	Chain<FNOSNodeRemoved> OnNOSNodeRemoved;
+	Chain<FNOSPinValueChanged> OnNOSPinValueChanged;
+	Chain<FNOSPinShowAsChanged> OnNOSPinShowAsChanged;
+	Chain<FNOSFunctionCalled> OnNOSFunctionCalled;
+	Chain<FNOSNodeSelected> OnNOSNodeSelected;
+	Chain<FNOSNodeImported> OnNOSNodeImported;
+	Chain<FNOSConnectionClosed> OnNOSConnectionClosed;
 	TMulticastDelegate<void(nos::app::ExecutionState), FDefaultTSDelegateUserPolicy> OnNOSStateChanged_GRPCThread;
 	TMulticastDelegate<void(const TArray<FString>&), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
 	// FNOSConsoleCommandExecuted OnNOSConsoleCommandExecuted;
