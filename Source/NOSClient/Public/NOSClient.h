@@ -99,7 +99,7 @@ typedef std::function<void()> Task;
 DECLARE_LOG_CATEGORY_EXTERN(LogNOSClient, Log, All);
 
 //events coming from Nodos
-DECLARE_EVENT_OneParam(FNOSClient, FNOSNodeConnected, nos::fb::Node const*);
+DECLARE_EVENT(FNOSClient, FNOSNodeConnected);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSNodeUpdated, nos::fb::Node const&);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSContextMenuRequested, nos::app::AppContextMenuRequest const&);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSContextMenuCommandFired, nos::app::AppContextMenuAction const&);
@@ -125,7 +125,7 @@ public:
 
 	virtual void HandleEvent(const nos::app::EngineEvent* event) override;
 	virtual void OnConnectionClosed() override;
-	void OnAppConnected(nos::fb::Node const* appNode);
+	void OnAppConnected();
 	void OnNodeUpdated(nos::fb::Node const& appNode);
 	void OnContextMenuRequested(nos::app::AppContextMenuRequest const& request);
 	void OnContextMenuCommandFired(nos::app::AppContextMenuAction const& action);

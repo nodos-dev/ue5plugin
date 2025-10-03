@@ -63,7 +63,7 @@ FString FNodos::GetNodosSDKDir()
 	{
 		return "";
 	}
-	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.0.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
+	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.3.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
 	LOGF("Nodos SDK path is %s", *OutResults);
 
 	TSharedPtr<FJsonObject> SDKInfoJsonParsed;
@@ -178,7 +178,7 @@ void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
 	switch (event->event_type())
 	{
 	case EngineEventUnion::AppConnectedEvent: {
-		OnAppConnected(event->event_as<AppConnectedEvent>()->node());
+		OnAppConnected();
 		break;
 	}
 	case EngineEventUnion::FullNodeUpdate: {
@@ -258,13 +258,8 @@ void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
 	}
 }
 
-void NOSEventDelegates::OnAppConnected(nos::fb::Node const* appNode)
-{
-	if (appNode)
-	{
-		FNOSClient::NodeId = *(FGuid*)appNode->id();
-	}
-	
+void NOSEventDelegates::OnAppConnected()
+{	
 	if (!PluginClient)
 	{
 		return;
@@ -273,25 +268,9 @@ void NOSEventDelegates::OnAppConnected(nos::fb::Node const* appNode)
 	LOG("Connected to nosEngine");
 	PluginClient->Connected();
 
-	nos::fb::TNode copy;
-	bool NodeIsPresent = false;
-	if(appNode)
-	{
-		NodeIsPresent = true;
-		appNode->UnPackTo(&copy);
-	}
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy, NodeIsPresent]()
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient]()
 		{
-			if(!NodeIsPresent)
-			{
-				NOSClient->OnNOSConnected.Broadcast(nullptr);
-				return;
-			}
-			flatbuffers::FlatBufferBuilder fbb;
-			auto offset = nos::fb::CreateNode(fbb, &copy);
-			fbb.Finish(offset);
-			auto buf = fbb.Release();
-			NOSClient->OnNOSConnected.Broadcast(flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
+			NOSClient->OnNOSConnected.Broadcast();
 		});
 
     

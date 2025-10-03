@@ -133,8 +133,6 @@ public:
 	void OnBeginFrame();
 	void OnEndFrame();
 
-	void OnNOSConnected(nos::fb::Node const* appNode);
-
 	void OnNOSNodeUpdated(nos::fb::Node const& appNode);
 
 	//every function of this class runs in game thread

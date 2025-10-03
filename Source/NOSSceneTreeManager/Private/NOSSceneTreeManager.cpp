@@ -221,7 +221,6 @@ void FNOSSceneTreeManager::StartupModule()
 	NOSActorManager = new FNOSActorManager(SceneTree);
 	//Bind to Nodos events
 	NOSClient->OnNOSNodeSelected.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeSelected);
-	NOSClient->OnNOSConnected.AddRaw(this, &FNOSSceneTreeManager::OnNOSConnected);
 	NOSClient->OnNOSNodeUpdated.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeUpdated);
 	NOSClient->OnNOSConnectionClosed.AddRaw(this, &FNOSSceneTreeManager::OnNOSConnectionClosed);
 	NOSClient->OnNOSPinValueChanged.AddRaw(this, &FNOSSceneTreeManager::OnNOSPinValueChanged);
@@ -477,41 +476,6 @@ bool FNOSSceneTreeManager::CheckNewLevels(float dt)
 		}
 	}
 	return true;
-}
-
-void FNOSSceneTreeManager::OnNOSConnected(nos::fb::Node const* appNode)
-{
-	if(!appNode)
-	{
-		return;
-	}
-		
-	SceneTree.Root->Id = *(FGuid*)appNode->id();
-	//add executable path
-	if(appNode->pins() && appNode->pins()->size() > 0)
-	{
-		std::vector<flatbuffers::Offset<nos::PartialPinUpdate>> PinUpdates;
-		flatbuffers::FlatBufferBuilder fb1;
-		for (auto pin : *appNode->pins())
-		{
-			PinUpdates.push_back(nos::CreatePartialPinUpdate(fb1, pin->id(), 0,
-				nos::fb::CreatePinOrphanStateDirect(fb1, nos::fb::PinOrphanStateType::ORPHAN, "Binding in progress")));
-		}
-		auto offset = nos::CreatePartialNodeUpdateDirect(fb1, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, 0, 0, 0, 0, 0, 0, &PinUpdates);
-		fb1.Finish(offset);
-		auto buf = fb1.Release();
-		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
-	}
-	RescanScene();
-	SendNodeUpdate(FNOSClient::NodeId, false);
-	if((appNode->pins() && appNode->pins()->size() > 0 )|| (appNode->contents_as_Graph()->nodes() && appNode->contents_as_Graph()->nodes()->size() > 0))
-	{
-		LOG("Node import request recieved on connection");
-		OnNOSNodeImported(*appNode);
-	}
-	//else
-		//SendSyncSemaphores(true);
 }
 
 void FNOSSceneTreeManager::OnNOSNodeUpdated(nos::fb::Node const& appNode)

@@ -42,7 +42,7 @@ void FNOSAssetManager::StartupModule()
 	AssetRegistryModule.Get().OnAssetAdded().AddRaw(this, &FNOSAssetManager::OnAssetCreated);
 	AssetRegistryModule.Get().OnAssetRemoved().AddRaw(this, &FNOSAssetManager::OnAssetDeleted);
 
-	NOSClient->OnNOSConnected.AddLambda([this](nos::fb::Node const* appNode)
+	NOSClient->OnNOSConnected.AddLambda([this]()
 		{
 			RescanAndSendAll();
 		});
