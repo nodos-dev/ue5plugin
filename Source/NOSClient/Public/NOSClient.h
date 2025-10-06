@@ -110,6 +110,7 @@ DECLARE_EVENT_OneParam(FNOSClient, FNOSFunctionCalled, nos::app::FunctionCall co
 DECLARE_EVENT_OneParam(FNOSClient, FNOSNodeSelected, nos::fb::UUID const&);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSNodeImported, nos::fb::Node const&);
 DECLARE_EVENT(FNOSClient, FNOSConnectionClosed);
+DECLARE_EVENT_TwoParams(FNOSClient, FNOSActorSpawnedDestroyed, AActor*, bool);
 
 // DECLARE_EVENT_OneParam(FNOSClient, FNOSConsoleCommandExecuted, FString);
 
@@ -312,6 +313,7 @@ public:
 	Chain<FNOSConnectionClosed> OnNOSConnectionClosed;
 	TMulticastDelegate<void(nos::app::ExecutionState), FDefaultTSDelegateUserPolicy> OnNOSStateChanged_GRPCThread;
 	TMulticastDelegate<void(const TArray<FString>&), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
+	Chain<FNOSActorSpawnedDestroyed> OnNOSActorSpawnedDestroyed;
 	// FNOSConsoleCommandExecuted OnNOSConsoleCommandExecuted;
 	
 	UENodeStatusHandler UENodeStatusHandler;

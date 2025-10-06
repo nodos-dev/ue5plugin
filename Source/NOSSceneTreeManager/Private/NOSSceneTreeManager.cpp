@@ -1054,6 +1054,7 @@ void FNOSSceneTreeManager::OnActorSpawned(AActor* InActor)
 	{
 		SendActorAddedOnUpdate(InActor);
 	}
+	NOSClient->OnNOSActorSpawnedDestroyed.Broadcast(InActor, true);
 }
 
 void FNOSSceneTreeManager::OnActorDestroyed(AActor* InActor)
@@ -1079,6 +1080,8 @@ void FNOSSceneTreeManager::OnActorDestroyed(AActor* InActor)
 	ActorsToBeAdded.Remove(InActor);
 	if (auto actorNode = SceneTree.GetNode(InActor))
 		ActorsToBeParentChanged.Remove(actorNode->Id);
+
+	NOSClient->OnNOSActorSpawnedDestroyed.Broadcast(InActor, false);
 }
 
 void FNOSSceneTreeManager::OnActorAttached(AActor* Actor, const AActor* ParentActor)
