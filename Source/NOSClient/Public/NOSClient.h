@@ -102,6 +102,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogNOSClient, Log, All);
 DECLARE_EVENT(FNOSClient, FNOSNodeConnected);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSContextMenuRequested, nos::app::AppContextMenuRequest const&);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSContextMenuCommandFired, nos::app::AppContextMenuAction const&);
+DECLARE_EVENT(FNOSClient, FNOSPreNodeRemoved);
 DECLARE_EVENT(FNOSClient, FNOSNodeRemoved);
 DECLARE_EVENT_FourParams(FNOSClient, FNOSPinValueChanged, nos::fb::UUID const&, uint8_t const*, size_t, bool);
 DECLARE_EVENT_TwoParams(FNOSClient, FNOSPinShowAsChanged, nos::fb::UUID const&, nos::fb::ShowAs);
@@ -301,6 +302,7 @@ public:
 	Chain<FNOSNodeConnected> OnNOSConnected;
 	Chain<FNOSContextMenuRequested> OnNOSContextMenuRequested;
 	Chain<FNOSContextMenuCommandFired> OnNOSContextMenuCommandFired;
+	Chain<FNOSPreNodeRemoved> OnNOSPreNodeRemoved;
 	Chain<FNOSNodeRemoved> OnNOSNodeRemoved;
 	Chain<FNOSPinValueChanged> OnNOSPinValueChanged;
 	Chain<FNOSPinShowAsChanged> OnNOSPinShowAsChanged;

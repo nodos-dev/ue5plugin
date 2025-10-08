@@ -408,6 +408,7 @@ void NOSEventDelegates::OnNodeRemoved()
 
 	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient]()
 		{
+			NOSClient->OnNOSPreNodeRemoved.Broadcast();
 			FNOSClient::NodeId = {};
 			NOSClient->OnNOSNodeRemoved.Broadcast();
 		});
