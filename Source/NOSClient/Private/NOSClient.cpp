@@ -284,40 +284,33 @@ void NOSEventDelegates::OnNodeUpdated(nos::fb::Node const& appNode)
 	{
 		return;
 	}
-	if (!FNOSClient::NodeId.IsValid())
-	{
-		FNOSClient::NodeId = *(FGuid*)appNode.id();
-		PluginClient->Connected();
-
-		nos::fb::TNode copy2;
-		appNode.UnPackTo(&copy2);
-		PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy2]()
-			{
-				flatbuffers::FlatBufferBuilder fbb;
-				auto offset = nos::fb::CreateNode(fbb, &copy2);
-				fbb.Finish(offset);
-				auto buf = fbb.Release();
-				NOSClient->OnNOSNodeImported.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
-			});
-		return;
-	}
-
 	nos::fb::TNode copy;
 	appNode.UnPackTo(&copy);
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy]()
+	bool isNewNode = !IsNodePresent_gRPCThread;
+	if (isNewNode)
+	{
+		IsNodePresent_gRPCThread = true;
+		PluginClient->Connected();
+	}
+
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, isNewNode, copy = std::move(copy)]()
 		{
+			FNOSClient::NodeId = *(FGuid*)&copy.id;
 			flatbuffers::FlatBufferBuilder fbb;
 			auto offset = nos::fb::CreateNode(fbb, &copy);
 			fbb.Finish(offset);
 			auto buf = fbb.Release();
-			NOSClient->OnNOSNodeUpdated.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
+			if(isNewNode)
+				NOSClient->OnNOSNodeImported.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
+			else
+				NOSClient->OnNOSNodeUpdated.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
 		});
 }
 
 void NOSEventDelegates::OnConnectionClosed()
 {
 	LOG("Connection with Nodos is finished.");
-	FNOSClient::NodeId = {};
+	IsNodePresent_gRPCThread = false;
 	if (!PluginClient)
 	{
 		return;
@@ -326,6 +319,7 @@ void NOSEventDelegates::OnConnectionClosed()
 	
 	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient]()
 		{
+			FNOSClient::NodeId = {};
 			NOSClient->OnNOSConnectionClosed.Broadcast();
 		});
 }
@@ -436,6 +430,7 @@ void NOSEventDelegates::OnExecuteStart(nos::app::AppExecuteStart const* appExecu
 void NOSEventDelegates::OnNodeRemoved()
 {
 	LOG("Plugin node removed from Nodos");
+	IsNodePresent_gRPCThread = false;
 	if (!PluginClient)
 	{
 		return;
@@ -576,8 +571,8 @@ void NOSEventDelegates::OnNodeImported(nos::fb::Node const& appNode)
 	{
 		return;
 	}
-
-
+	ensureMsgf(!IsNodePresent_gRPCThread, TEXT("Node is already present in gRPC thread!"));
+	IsNodePresent_gRPCThread = true;
 	nos::fb::TNode copy;
 	appNode.UnPackTo(&copy);
 	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy]()

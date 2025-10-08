@@ -147,6 +147,8 @@ public:
 	FNOSClient* PluginClient;
 
 	ExecuteFrameNumberQueue ExecuteQueue{};
+
+	bool IsNodePresent_gRPCThread = false;
 };
 
 class NOSCLIENT_API UENodeStatusHandler
@@ -327,6 +329,7 @@ protected:
 
 	FPSCounter FPSCounter;
 	bool IsWorldInitialized = false;
+	bool IsNodePresent_gRPCThread = false;
 
 };
 
