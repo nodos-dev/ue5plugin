@@ -133,8 +133,6 @@ public:
 	void OnBeginFrame();
 	void OnEndFrame();
 
-	void OnNOSNodeUpdated(nos::fb::Node const& appNode);
-
 	//every function of this class runs in game thread
 	void OnNOSNodeSelected(nos::fb::UUID const& nodeId);
 

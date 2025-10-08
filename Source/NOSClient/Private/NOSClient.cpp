@@ -63,7 +63,7 @@ FString FNodos::GetNodosSDKDir()
 	{
 		return "";
 	}
-	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.3.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
+	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.4.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
 	LOGF("Nodos SDK path is %s", *OutResults);
 
 	TSharedPtr<FJsonObject> SDKInfoJsonParsed;
@@ -181,10 +181,6 @@ void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
 		OnAppConnected();
 		break;
 	}
-	case EngineEventUnion::FullNodeUpdate: {
-		OnNodeUpdated(*event->event_as<nos::FullNodeUpdate>()->node());
-		break;
-	}
 	case EngineEventUnion::AppContextMenuRequest: {
 		OnContextMenuRequested(*event->event_as<AppContextMenuRequest>());
 		break;
@@ -274,44 +270,6 @@ void NOSEventDelegates::OnAppConnected()
 		});
 
     
-}
-
-void NOSEventDelegates::OnNodeUpdated(nos::fb::Node const& appNode)
-{
-	LOG("Node update from Nodos");
-
-	if (!PluginClient)
-	{
-		return;
-	}
-	if (!FNOSClient::NodeId.IsValid())
-	{
-		FNOSClient::NodeId = *(FGuid*)appNode.id();
-		PluginClient->Connected();
-
-		nos::fb::TNode copy2;
-		appNode.UnPackTo(&copy2);
-		PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy2]()
-			{
-				flatbuffers::FlatBufferBuilder fbb;
-				auto offset = nos::fb::CreateNode(fbb, &copy2);
-				fbb.Finish(offset);
-				auto buf = fbb.Release();
-				NOSClient->OnNOSNodeImported.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
-			});
-		return;
-	}
-
-	nos::fb::TNode copy;
-	appNode.UnPackTo(&copy);
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy]()
-		{
-			flatbuffers::FlatBufferBuilder fbb;
-			auto offset = nos::fb::CreateNode(fbb, &copy);
-			fbb.Finish(offset);
-			auto buf = fbb.Release();
-			NOSClient->OnNOSNodeUpdated.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
-		});
 }
 
 void NOSEventDelegates::OnConnectionClosed()
@@ -580,6 +538,7 @@ void NOSEventDelegates::OnNodeImported(nos::fb::Node const& appNode)
 
 	nos::fb::TNode copy;
 	appNode.UnPackTo(&copy);
+	FNOSClient::NodeId = *(FGuid*)&copy.id;
 	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy]()
 		{
 			flatbuffers::FlatBufferBuilder fbb;
@@ -589,6 +548,7 @@ void NOSEventDelegates::OnNodeImported(nos::fb::Node const& appNode)
 			FNOSClient::NodeId = *(FGuid*)&copy.id;
 			NOSClient->OnNOSNodeImported.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
 
+			/*
 			auto WorldContext = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport);
 			if (WorldContext->World())
 			{
@@ -596,7 +556,7 @@ void NOSEventDelegates::OnNodeImported(nos::fb::Node const& appNode)
 				MapNameStatus.text = TCHAR_TO_UTF8(*WorldContext->World()->GetMapName());
 				MapNameStatus.type = nos::fb::NodeStatusMessageType::INFO;
 				NOSClient->UENodeStatusHandler.Add("map_name", MapNameStatus);
-			}
+			}*/
 		});
 }
 

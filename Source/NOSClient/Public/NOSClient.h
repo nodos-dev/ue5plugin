@@ -100,7 +100,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogNOSClient, Log, All);
 
 //events coming from Nodos
 DECLARE_EVENT(FNOSClient, FNOSNodeConnected);
-DECLARE_EVENT_OneParam(FNOSClient, FNOSNodeUpdated, nos::fb::Node const&);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSContextMenuRequested, nos::app::AppContextMenuRequest const&);
 DECLARE_EVENT_OneParam(FNOSClient, FNOSContextMenuCommandFired, nos::app::AppContextMenuAction const&);
 DECLARE_EVENT(FNOSClient, FNOSNodeRemoved);
@@ -127,7 +126,6 @@ public:
 	virtual void HandleEvent(const nos::app::EngineEvent* event) override;
 	virtual void OnConnectionClosed() override;
 	void OnAppConnected();
-	void OnNodeUpdated(nos::fb::Node const& appNode);
 	void OnContextMenuRequested(nos::app::AppContextMenuRequest const& request);
 	void OnContextMenuCommandFired(nos::app::AppContextMenuAction const& action);
 	void OnNodeRemoved();
@@ -301,7 +299,6 @@ public:
 	TMap<FGuid, FName> PathUpdates;
 
 	Chain<FNOSNodeConnected> OnNOSConnected;
-	Chain<FNOSNodeUpdated> OnNOSNodeUpdated;
 	Chain<FNOSContextMenuRequested> OnNOSContextMenuRequested;
 	Chain<FNOSContextMenuCommandFired> OnNOSContextMenuCommandFired;
 	Chain<FNOSNodeRemoved> OnNOSNodeRemoved;

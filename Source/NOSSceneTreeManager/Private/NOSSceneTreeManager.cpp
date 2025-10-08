@@ -221,7 +221,6 @@ void FNOSSceneTreeManager::StartupModule()
 	NOSActorManager = new FNOSActorManager(SceneTree);
 	//Bind to Nodos events
 	NOSClient->OnNOSNodeSelected.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeSelected);
-	NOSClient->OnNOSNodeUpdated.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeUpdated);
 	NOSClient->OnNOSConnectionClosed.AddRaw(this, &FNOSSceneTreeManager::OnNOSConnectionClosed);
 	NOSClient->OnNOSPinValueChanged.AddRaw(this, &FNOSSceneTreeManager::OnNOSPinValueChanged);
 	NOSClient->OnNOSPinShowAsChanged.AddRaw(this, &FNOSSceneTreeManager::OnNOSPinShowAsChanged);
@@ -476,39 +475,6 @@ bool FNOSSceneTreeManager::CheckNewLevels(float dt)
 		}
 	}
 	return true;
-}
-
-void FNOSSceneTreeManager::OnNOSNodeUpdated(nos::fb::Node const& appNode)
-{
-	FString NodeName(appNode.name()->c_str());
-	LOGF("On NOS Node updated for %s", *NodeName);
-	
-	if (FNOSClient::NodeId != SceneTree.Root->Id)
-	{
-		SceneTree.Root->Id = *(FGuid*)appNode.id();
-		RescanScene();
-		SendNodeUpdate(FNOSClient::NodeId);
-		//SendSyncSemaphores(true);
-	}
-	auto texman = NOSTextureShareManager::GetInstance();
-	for (auto& [id, pin] : ParsePins(&appNode))
-	{
-		if (texman->PendingCopyQueue.Contains(id))
-		{
-			auto nosprop = texman->PendingCopyQueue.FindRef(id);
-			auto ShowAs = nosprop->PinShowAs;
-			if(NOSPropertyManager.PropertyToPortalPin.Contains(nosprop->Id))
-			{
-				auto PortalId = NOSPropertyManager.PropertyToPortalPin.FindRef(nosprop->Id); 
-				if(NOSPropertyManager.PortalPinsById.Contains(PortalId))
-				{
-					auto& Portal = NOSPropertyManager.PortalPinsById.FindChecked(PortalId);
-					ShowAs = Portal.ShowAs;
-				}
-			}
-			texman->UpdatePinShowAs(nosprop, ShowAs);
-		}
-	}
 }
 
 void FNOSSceneTreeManager::OnNOSNodeSelected(nos::fb::UUID const& nodeId)
