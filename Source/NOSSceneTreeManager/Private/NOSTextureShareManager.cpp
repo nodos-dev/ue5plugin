@@ -249,8 +249,9 @@ std::optional<nos::sys::vulkan::TTexture> NOSTextureShareManager::GetUpdatedText
 		(*texPropInfo)->ActiveDestinationSharedResource = nullptr;
 	}
 
-	// TODO: Texture.external_memory.pid() == (uint64_t)FPlatformProcess::GetCurrentProcessId() is this needed
-
+	/* TODO: We should set to orphan before changing pin value and set to orphan after changing pin value to stop nodos side creating a new resource while we are changing it.When we go from orphan to activated, nodos creates a new resource automatically, and starts thinking that the app will import the texture, which is not the case with UE. But when we send the new pin value, nodos will switch to importing from the app so this is handled indirectly.
+	  Or, add a mechanism to un-orphan a pin with a value, so that nodos won't try to create a new resource while un-orphaning
+	*/
 	auto changePinOrphanness = [&](bool newOrphan)
 		{
 			ensureMsgf(NosProperty->IsOrphan != newOrphan, TEXT("Texture property %s orphanness didn't change!"), *NosProperty->DisplayName);
@@ -306,6 +307,9 @@ void NOSTextureShareManager::UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::
 
 void NOSTextureShareManager::TextureDestroyed(NOSProperty* textureProp)
 {
+	auto texPropInfo = TextureProperties.Find(textureProp);
+	if ((*texPropInfo)->ActiveDestinationSharedResource)
+		ResourcesToDelete.Enqueue({ std::move((*texPropInfo)->ActiveDestinationSharedResource), GFrameCounter });
 	TextureProperties.Remove(textureProp);
 }
 
@@ -492,6 +496,11 @@ void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumb
 
 void NOSTextureShareManager::Reset()
 {
+	for(auto& [prop, info] : TextureProperties)
+	{
+		if(info->ActiveDestinationSharedResource)
+			ResourcesToDelete.Enqueue({ std::move(info->ActiveDestinationSharedResource), GFrameCounter });
+	}
 	TextureProperties.Empty();
 	PendingCopyQueue.Empty();
 }
