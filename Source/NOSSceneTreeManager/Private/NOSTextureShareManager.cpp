@@ -35,40 +35,15 @@ NOSTextureShareManager* NOSTextureShareManager::singleton;
 //#define DEBUG_FRAME_SYNC_LOG
 //#define DEBUG_NODOS_TEXTURE_COPIES
 
-nosTextureInfo GetResourceInfo(NOSProperty* nosprop)
+nosTextureInfo ConvertRenderTargetToNosTextureInfo(UTextureRenderTarget2D const& renderTarget)
 {
-	UObject* obj = nosprop->GetRawObjectContainer();
-	FObjectProperty* prop = CastField<FObjectProperty>(nosprop->Property);
-
-	if (!obj)
-	{
-		return nosTextureInfo{
-			.Width = 1600,
-			.Height = 900,
-			.Format = nosFormat::NOS_FORMAT_R16G16B16A16_SFLOAT,
-			.Usage = (nosImageUsage)(NOS_IMAGE_USAGE_RENDER_TARGET | NOS_IMAGE_USAGE_SAMPLED | NOS_IMAGE_USAGE_TRANSFER_SRC | NOS_IMAGE_USAGE_TRANSFER_DST) 
-		};
-	}
-
-	UTextureRenderTarget2D* trt2d = Cast<UTextureRenderTarget2D>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UTextureRenderTarget2D>(obj)));
-
-	if (!trt2d)
-	{
-		return nosTextureInfo{
-			.Width = 1600,
-			.Height = 900,
-			.Format = nosFormat::NOS_FORMAT_R16G16B16A16_SFLOAT,
-			.Usage = (nosImageUsage)(NOS_IMAGE_USAGE_RENDER_TARGET | NOS_IMAGE_USAGE_SAMPLED | NOS_IMAGE_USAGE_TRANSFER_SRC | NOS_IMAGE_USAGE_TRANSFER_DST)
-		};
-	}
-
 	nosTextureInfo info = {
-		.Width = (uint32_t)trt2d->GetSurfaceWidth(),
-		.Height = (uint32_t)trt2d->GetSurfaceHeight(),
+		.Width = (uint32_t)renderTarget.GetSurfaceWidth(),
+		.Height = (uint32_t)renderTarget.GetSurfaceHeight(),
 		.Usage = (nosImageUsage)(NOS_IMAGE_USAGE_RENDER_TARGET | NOS_IMAGE_USAGE_SAMPLED | NOS_IMAGE_USAGE_TRANSFER_SRC | NOS_IMAGE_USAGE_TRANSFER_DST),
 	};
 
-	switch (trt2d->RenderTargetFormat)
+	switch (renderTarget.RenderTargetFormat)
 	{
 	case ETextureRenderTargetFormat::RTF_R8:
 		info.Format = NOS_FORMAT_R8_UNORM;
@@ -111,6 +86,74 @@ nosTextureInfo GetResourceInfo(NOSProperty* nosprop)
 	return info;
 }
 
+UTextureRenderTarget2D* GetPropertyRenderTarget(NOSProperty* nosprop)
+{
+	UObject* obj = nosprop->GetRawObjectContainer();
+	FObjectProperty* prop = CastField<FObjectProperty>(nosprop->Property);
+	if (!obj || !prop)
+	{
+		return nullptr;
+	}
+
+	return Cast<UTextureRenderTarget2D>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UTextureRenderTarget2D>(obj)));
+}
+
+
+std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::sys::vulkan::TTexture>> TryCreateDestinationForRT(ID3D12Device& device, UTextureRenderTarget2D& sourceRT, FString const& destName)
+{
+	auto info = ConvertRenderTargetToNosTextureInfo(sourceRT);
+
+	auto newRTName = destName + FGuid::NewGuid().ToString();
+
+	UTextureRenderTarget2D* NewRenderTarget2D = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), *newRTName, RF_MarkAsRootSet);
+	check(NewRenderTarget2D);
+	NewRenderTarget2D->Rename(*newRTName);
+	NewRenderTarget2D->RenderTargetFormat = sourceRT.RenderTargetFormat;
+	NewRenderTarget2D->ClearColor = sourceRT.ClearColor;
+	NewRenderTarget2D->bAutoGenerateMips = 0;
+	NewRenderTarget2D->bCanCreateUAV = true;
+	NewRenderTarget2D->bGPUSharedFlag = true;
+	NewRenderTarget2D->InitAutoFormat(info.Width, info.Height);
+	NewRenderTarget2D->UpdateResourceImmediate(true);
+	FlushRenderingCommands();
+
+	auto rt = NewRenderTarget2D->GameThread_GetRenderTargetResource();
+	//if (!rt) return false;
+	auto RHIResource = rt->GetTexture2DRHI();
+	if (!RHIResource || !RHIResource->IsValid())
+	{
+		return std::nullopt;
+	}
+	FRHITexture* RHITexture = RHIResource;
+
+	ID3D12Resource* DXResource = static_cast<ID3D12Resource*>(RHITexture->GetNativeResource());
+	DXResource->SetName(*destName);
+
+	HANDLE handle = 0;
+	NOS_D3D12_ASSERT_SUCCESS(device.CreateSharedHandle(DXResource, 0, GENERIC_ALL, 0, &handle));
+	nos::sys::vulkan::TTexture retTexture;
+	retTexture.resolution = nos::sys::vulkan::SizePreset::CUSTOM;
+	retTexture.width = info.Width;
+	retTexture.height = info.Height;
+	retTexture.format = nos::sys::vulkan::Format(info.Format);
+	retTexture.usage = nos::sys::vulkan::ImageUsage(info.Usage) | nos::sys::vulkan::ImageUsage::SAMPLED;
+	auto& Ext = retTexture.external_memory;
+	Ext.mutate_handle_type(NOS_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE);
+	Ext.mutate_handle((uint64_t)handle);
+	D3D12_RESOURCE_DESC desc = DXResource->GetDesc();
+	Ext.mutate_allocation_size(device.GetResourceAllocationInfo(0, 1, &desc).SizeInBytes);
+	Ext.mutate_pid(FPlatformProcess::GetCurrentProcessId());
+	retTexture.unmanaged = true;
+	retTexture.unscaled = true;
+	retTexture.handle = 0;
+
+	auto sharedInfo = MakeShared<SharedResourceInfo>();
+
+	sharedInfo->DstResource = NewRenderTarget2D;
+	sharedInfo->SharedHandle = handle;
+	return std::make_pair(std::move(sharedInfo), std::move(retTexture));
+}
+
 NOSTextureShareManager::NOSTextureShareManager()
 {
 	Initiate();
@@ -130,136 +173,140 @@ NOSTextureShareManager::~NOSTextureShareManager()
 
 nos::sys::vulkan::TTexture NOSTextureShareManager::AddTexturePin(NOSProperty* nosprop)
 {
-	auto copyInfo = MakeShared<SharedResourceInfo>();
-	nos::sys::vulkan::TTexture texture;
-	if(!CreateTextureResource(nosprop, texture, *copyInfo))
+	auto& texPropInfo = *TextureProperties.Add(nosprop, MakeShared<TexturePropertyInfo>(nosprop->PinShowAs));
+	auto propRT = GetPropertyRenderTarget(nosprop);
+	nosprop->IsOrphan = true;
+	if (!propRT)
 	{
-		return texture;
+		return {};
 	}
-	
-	
+	auto copyInfoTexPair = TryCreateDestinationForRT(*Dev, *propRT, nosprop->DisplayName);
+	if(!copyInfoTexPair)
 	{
-		//start property pins as output pins
-		Copies.Add(nosprop, std::move(copyInfo));
+		return {};
 	}
-	return texture;
+	nosprop->IsOrphan = false;
+	texPropInfo.ActiveDestinationSharedResource = std::move(copyInfoTexPair->first);
+	return copyInfoTexPair->second;
 }
 
-bool NOSTextureShareManager::CreateTextureResource(NOSProperty* nosprop, nos::sys::vulkan::TTexture& Texture, SharedResourceInfo& Resource)
+void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
+{
+	/// This should only send pin values for non-broadcasted property value changes since they are already handled in NOSSceneTreeManager's code
+	for (auto const& [prop, texPropInfo] : TextureProperties)
 	{
-	nosTextureInfo info = GetResourceInfo(nosprop);
-	UObject* obj = nosprop->GetRawObjectContainer();
-	FObjectProperty* prop = CastField<FObjectProperty>(nosprop->Property);
-	UTextureRenderTarget2D* trt2d = Cast<UTextureRenderTarget2D>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UTextureRenderTarget2D>(obj)));
-	if(!trt2d)
-	{
-		nosprop->IsOrphan = true;
-		nosprop->OrphanMessage = "No texture resource bound to property!";
-		return false;
+		// This will update stored nodos pin value and orphanness state, but wont send the pin value update
+		auto oldDestPtr = texPropInfo->ActiveDestinationSharedResource.Get();
+		prop->UpdatePinValue();
+		auto newDestPtr = texPropInfo->ActiveDestinationSharedResource.Get();
+		if (oldDestPtr != newDestPtr)
+		{
+			flatbuffers::FlatBufferBuilder mb;
+			auto offset2 = nos::app::CreateSetPinValueDirect(mb, (nos::fb::UUID*)&prop->Id, &prop->data);
+			mb.Finish(offset2);
+			auto buf = mb.Release();
+			auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
+			NOSClient->AppServiceClient->NotifyPinValueChanged(*root);
+		}
 	}
-	
-	UTextureRenderTarget2D* NewRenderTarget2D = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), *(nosprop->DisplayName +FGuid::NewGuid().ToString()), RF_MarkAsRootSet);
-	check(NewRenderTarget2D);
-	NewRenderTarget2D->Rename(*(nosprop->DisplayName +FGuid::NewGuid().ToString()));
-	NewRenderTarget2D->RenderTargetFormat = trt2d->RenderTargetFormat;
-	NewRenderTarget2D->ClearColor = trt2d->ClearColor;
-	NewRenderTarget2D->bAutoGenerateMips = 0;
-	NewRenderTarget2D->bCanCreateUAV = true;
-	NewRenderTarget2D->bGPUSharedFlag = true;
-	NewRenderTarget2D->InitAutoFormat(info.Width, info.Height);	
-	NewRenderTarget2D->UpdateResourceImmediate(true);
-	FlushRenderingCommands();
-	
-	auto rt = NewRenderTarget2D->GameThread_GetRenderTargetResource();
-	//if (!rt) return false;
-	auto RHIResource = rt->GetTexture2DRHI();
-	if (!RHIResource || !RHIResource->IsValid())
-	{
-		return false;
-	}
-	FRHITexture* RHITexture = RHIResource;
-
-	ID3D12Resource* DXResource = static_cast<ID3D12Resource*>(RHITexture->GetNativeResource());
-    DXResource->SetName(*nosprop->DisplayName);
-	
-	HANDLE handle = 0;
-    NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(DXResource, 0, GENERIC_ALL, 0, &handle));
-	Texture.resolution = nos::sys::vulkan::SizePreset::CUSTOM;
-	Texture.width = info.Width;
-	Texture.height = info.Height;
-	Texture.format = nos::sys::vulkan::Format(info.Format);
-	Texture.usage = nos::sys::vulkan::ImageUsage(info.Usage) | nos::sys::vulkan::ImageUsage::SAMPLED;
-	auto& Ext = Texture.external_memory;
-	Ext.mutate_handle_type(NOS_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE);
-	Ext.mutate_handle((uint64_t)handle);
-	D3D12_RESOURCE_DESC desc = DXResource->GetDesc();
-	Ext.mutate_allocation_size(Dev->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes);
-	Ext.mutate_pid(FPlatformProcess::GetCurrentProcessId());
-	Texture.unmanaged = true;
-	Texture.unscaled = true;
-	Texture.handle = 0;
-
-	Resource.SrcNosp = nosprop;
-	Resource.DstResource = NewRenderTarget2D;
-	Resource.ShowAs = nosprop->PinShowAs;
-	Resource.SharedHandle = handle;
-	return true;
 }
-
 
 void NOSTextureShareManager::UpdateTexturePin(NOSProperty* nosprop, nos::fb::ShowAs RealShowAs)
 {
 	UpdatePinShowAs(nosprop, RealShowAs);
 }
 
-bool NOSTextureShareManager::UpdateTexturePin(NOSProperty* NosProperty, nos::sys::vulkan::TTexture& Texture)
+std::optional<nos::sys::vulkan::TTexture> NOSTextureShareManager::GetUpdatedTexturePinValue(NOSProperty* NosProperty)
 {
-	nosTextureInfo info = GetResourceInfo(NosProperty);
+	auto* texPropInfo = TextureProperties.Find(NosProperty);
+	ensureMsgf(texPropInfo, TEXT("Texture property %s is not registered!"), *NosProperty->DisplayName);
+	if (!texPropInfo)
+		texPropInfo = &TextureProperties.Add(NosProperty, MakeShared<TexturePropertyInfo>(NosProperty->PinShowAs));
 
-	auto resourceInfoPtrPtr = Copies.Find(NosProperty);
-	if (resourceInfoPtrPtr == nullptr)
-		return false;
-	auto& resourceInfoSharedPtr = *resourceInfoPtrPtr;
+	auto* propertyRenderTarget = GetPropertyRenderTarget(NosProperty);
+	auto curDestinationResource = (*texPropInfo)->ActiveDestinationSharedResource;
+	// Both new and old is null, nothing changed
+	if (!propertyRenderTarget && !curDestinationResource)
+		return std::nullopt;
+	bool hadDestinationResource = curDestinationResource != nullptr;
 
-	if (Texture.external_memory.pid() != (uint64_t)FPlatformProcess::GetCurrentProcessId())
-		return false;
-
-	bool changed = false;
-
-	nos::sys::vulkan::Format fmt = nos::sys::vulkan::Format(info.Format);
-	nos::sys::vulkan::ImageUsage usage = nos::sys::vulkan::ImageUsage(info.Usage) | nos::sys::vulkan::ImageUsage::SAMPLED;
-
-	if (Texture.width != info.Width ||
-		Texture.height != info.Height ||
-		Texture.format != fmt ||
-		Texture.usage != usage)
+	// Both were present, check if destination suits the property RT
+	if (propertyRenderTarget && hadDestinationResource)
 	{
-		changed = true;
-		
-		nos::fb::ShowAs tmp = resourceInfoSharedPtr->ShowAs;
-		ResourcesToDelete.Enqueue({ std::move(resourceInfoSharedPtr), GFrameCounter });
-
-		resourceInfoSharedPtr = MakeShared<SharedResourceInfo>();
-		if(!CreateTextureResource(NosProperty, Texture, *resourceInfoSharedPtr))
-		{
-			return changed;
-		}
-		
-		resourceInfoSharedPtr->ShowAs = tmp;
+		auto newRTinfo = ConvertRenderTargetToNosTextureInfo(*propertyRenderTarget);
+		auto oldDestRTInfo = ConvertRenderTargetToNosTextureInfo(*curDestinationResource->DstResource);
+		if (!(oldDestRTInfo.Width != newRTinfo.Width ||
+			oldDestRTInfo.Height != newRTinfo.Height ||
+			oldDestRTInfo.Format != newRTinfo.Format ||
+			oldDestRTInfo.Usage != (newRTinfo.Usage | NOS_IMAGE_USAGE_SAMPLED)))
+			return std::nullopt;
 	}
 
-	return changed;
+	// If old resource was present, it will be deleted, so remember its ShowAs
+	if (curDestinationResource)
+	{
+		ResourcesToDelete.Enqueue({ std::move(curDestinationResource), GFrameCounter });
+		(*texPropInfo)->ActiveDestinationSharedResource = nullptr;
+	}
+
+	// TODO: Texture.external_memory.pid() == (uint64_t)FPlatformProcess::GetCurrentProcessId() is this needed
+
+	auto changePinOrphanness = [&](bool newOrphan)
+		{
+			ensureMsgf(NosProperty->IsOrphan != newOrphan, TEXT("Texture property %s orphanness didn't change!"), *NosProperty->DisplayName);
+			NosProperty->IsOrphan = newOrphan;
+			if(newOrphan)
+				NosProperty->OrphanMessage = "Texture Render Target is not assigned or incompatible!";
+			else
+				NosProperty->OrphanMessage = "";
+
+			flatbuffers::FlatBufferBuilder mb;
+			auto pinOrphanStateOffset = nos::fb::CreatePinOrphanStateDirect(mb, newOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, newOrphan ? TCHAR_TO_UTF8(*NosProperty->OrphanMessage) : 0);
+			auto offset = nos::CreateAppEventOffset(mb, nos::CreatePartialPinUpdateDirect(mb, (nos::fb::UUID*)&NosProperty->Id, nullptr, pinOrphanStateOffset));
+			mb.Finish(offset);
+			auto buf = mb.Release();
+			auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+			NOSClient->AppServiceClient->Send(*root);
+		};
+
+	if (propertyRenderTarget)
+	{
+		auto newShareInfoAndTex = TryCreateDestinationForRT(*Dev, *propertyRenderTarget, NosProperty->DisplayName);
+		if(!newShareInfoAndTex)
+		{
+			// If oldResource was present, then it is now deleted and new texture is not created, so it changed
+			if (hadDestinationResource)
+			{
+				changePinOrphanness(true);
+				// Old was present but new is not, so return invalid texture
+				return nos::sys::vulkan::TTexture{};
+			}
+			// Both old and new are not present, so nothing changed
+			return std::nullopt;
+		}
+		if (!hadDestinationResource)
+			changePinOrphanness(false);
+		(*texPropInfo)->ActiveDestinationSharedResource = std::move(newShareInfoAndTex->first);
+		return newShareInfoAndTex->second;
+	}
+	changePinOrphanness(false);
+	// Old was present but new is not, so return invalid texture
+	return nos::sys::vulkan::TTexture{};
 }
 
 void NOSTextureShareManager::UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs)
 {
-	if(auto* resourceInfo = Copies.Find(NosProperty))
-		(*resourceInfo)->ShowAs = NewShowAs;
+	if(auto* texPropInfo = TextureProperties.Find(NosProperty))
+		(*texPropInfo)->ShowAs = NewShowAs;
+	else
+	{
+		ensureMsgf(NosProperty->TypeName != nos::sys::vulkan::Texture::GetFullyQualifiedName(), TEXT("Texture property %s is not registered!"), *NosProperty->DisplayName);
+	}
 }
 
 void NOSTextureShareManager::TextureDestroyed(NOSProperty* textureProp)
 {
-	Copies.Remove(textureProp);
+	TextureProperties.Remove(textureProp);
 }
 
 static HANDLE DupeHandle(uint64_t pid, HANDLE handle)
@@ -286,53 +333,21 @@ static bool ImportSharedFence(uint64_t pid, HANDLE handle, ID3D12Device* pDevice
        return true;
 }
 
-void FilterCopies(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>>& Copies, TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>>& FilteredCopies)
+/// Returns only the active copies that match the given ShowAs
+void GetActiveTextureCopiesWithShowAs(nos::fb::ShowAs FilterShowAs, TMap<NOSProperty*, TSharedPtr<TexturePropertyInfo>>& textureProperties, TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>>& FilteredCopies)
 {
-	for (auto const& [nosprop, info] : Copies)
+	for (auto const& [nosprop, info] : textureProperties)
 	{
-		UObject* obj = nosprop->GetRawObjectContainer();
-		if (!obj) continue;
-		auto prop = CastField<FObjectProperty>(nosprop->Property);
-		if (!prop) continue;
-		auto URT = Cast<UTextureRenderTarget2D>(prop->GetObjectPropertyValue(prop->ContainerPtrToValuePtr<UTextureRenderTarget2D>(obj)));
-		if (!URT) continue;
-		
-		 if(info->DstResource->SizeX != URT->SizeX || info->DstResource->SizeY != URT->SizeY)
-		 {
-		 	//todo texture is changed update it
-		 	
-			const nos::sys::vulkan::Texture* tex = flatbuffers::GetRoot<nos::sys::vulkan::Texture>(nosprop->data.data());
-			nos::sys::vulkan::TTexture texture;
-			tex->UnPackTo(&texture);
-
-		 	auto TextureShareManager = NOSTextureShareManager::GetInstance();
-			if (TextureShareManager->UpdateTexturePin(nosprop, texture))
-			{
-				// data = nos::Buffer::From(texture);
-				flatbuffers::FlatBufferBuilder fb;
-				auto offset = nos::sys::vulkan::CreateTexture(fb, &texture);
-				fb.Finish(offset);
-				nos::Buffer buffer = fb.Release();
-				nosprop->data = buffer;
-				
-				if (!TextureShareManager->NOSClient->IsConnected() || nosprop->data.empty())
-				{
-					return;
-				}
-				
-				flatbuffers::FlatBufferBuilder mb;
-				auto offset2 = nos::app::CreateSetPinValueDirect(mb, (nos::fb::UUID*)&nosprop->Id, &nosprop->data);
-				mb.Finish(offset2);
-				auto buf = mb.Release();
-				auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
-				TextureShareManager->NOSClient->AppServiceClient->NotifyPinValueChanged(*root);
-			}
-		 }
-			
-		if(info->ShowAs == FilterShowAs)
-		{
-			FilteredCopies.Add(URT, info);
-		}
+		auto* URT = GetPropertyRenderTarget(nosprop);
+		if (info->ActiveDestinationSharedResource == nullptr || !URT || info->ShowAs != FilterShowAs)
+			continue;
+		bool resourcesCompatible = info->ActiveDestinationSharedResource->DstResource->SizeX == URT->SizeX &&
+			info->ActiveDestinationSharedResource->DstResource->SizeY == URT->SizeY &&
+			info->ActiveDestinationSharedResource->DstResource->RenderTargetFormat == URT->RenderTargetFormat;
+		ensureMsgf(resourcesCompatible, TEXT("Texture property %s has incompatible resources!"), *nosprop->DisplayName);
+		if (!resourcesCompatible)
+			continue;
+		FilteredCopies.Add(URT, info->ActiveDestinationSharedResource);
 	}
 }
 
@@ -370,10 +385,11 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 	}
 }
 
-void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>>& CopyMap)
+void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
 {
+	CheckAndUpdateTexturePinValues();
 	TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>> CopiesFiltered;
-	FilterCopies(CopyShowAs, CopyMap, CopiesFiltered);
+	GetActiveTextureCopiesWithShowAs(CopyShowAs, TextureProperties, CopiesFiltered);
 
 	//auto cmdData = GetNewCommandList();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
@@ -419,12 +435,12 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, TMap<NOSP
 
 void NOSTextureShareManager::OnBeginFrame()
 {
-	ProcessCopies(nos::fb::ShowAs::INPUT_PIN, Copies);
+	ProcessCopies(nos::fb::ShowAs::INPUT_PIN);
 }
 
 void NOSTextureShareManager::OnEndFrame()
 {
-	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, Copies);
+	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN);
 	FrameCounter++;
 	while(!ResourcesToDelete.IsEmpty())
 	{
@@ -476,8 +492,7 @@ void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumb
 
 void NOSTextureShareManager::Reset()
 {
-
-	Copies.Empty();
+	TextureProperties.Empty();
 	PendingCopyQueue.Empty();
 }
 

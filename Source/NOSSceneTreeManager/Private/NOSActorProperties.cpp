@@ -1085,21 +1085,17 @@ std::vector<uint8> NOSObjectProperty::UpdatePinValue(uint8* customContainer)
 	UObject* container = GetRawObjectContainer();
 
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
+	{
+		if (auto updatedTexValue = NOSTextureShareManager::GetInstance()->GetUpdatedTexturePinValue(this))
 		{
-		const nos::sys::vulkan::Texture* tex = flatbuffers::GetRoot<nos::sys::vulkan::Texture>(data.data());
-		nos::sys::vulkan::TTexture texture;
-		tex->UnPackTo(&texture);
-
-		if (NOSTextureShareManager::GetInstance()->UpdateTexturePin(this, texture))
-			{
 			// data = nos::Buffer::From(texture);
 			flatbuffers::FlatBufferBuilder fb;
-			auto offset = nos::sys::vulkan::CreateTexture(fb, &texture);
+			auto offset = nos::sys::vulkan::CreateTexture(fb, &*updatedTexValue);
 			fb.Finish(offset);
 			nos::Buffer buffer = fb.Release();
 			data = buffer;
-			}
 		}
+	}
 
 	return std::vector<uint8>(); 
 }

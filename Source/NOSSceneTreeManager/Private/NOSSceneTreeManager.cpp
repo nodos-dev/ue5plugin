@@ -3683,22 +3683,6 @@ void FNOSPropertyManager::OnBeginFrame()
 		for (auto& [id, val] : executeInfo.PinValueUpdates)
 		{
 			NOSClient->OnNOSPinValueChanged.Broadcast(*(nos::fb::UUID*)&id, val.As<u8>(), val.Size(), false);
-
-
-		//	FGuid guid = *(FGuid*)&id;
-		//	if (auto* NosPropertyIt = PropertiesById.Find(guid))
-		//	{
-		//		auto NosProperty = *NosPropertyIt;
-		//		if (!NosProperty->GetRawContainer())
-		//		{
-		//			return;
-		//		}
-		//		if (!PropertyToPortalPin.Contains(guid))
-		//		{
-		//			CreatePortal(guid, nos::fb::ShowAs::PROPERTY);
-		//		}
-		//		NosProperty->SetPropValue(val.Data(), val.Size());
-		//	}
 		}
 	}
 	for (auto [id, portal] : PortalPinsById)
