@@ -68,12 +68,24 @@ struct SharedResourceInfo
 	SharedResourceInfo& operator=(const SharedResourceInfo&) = delete;
 	SharedResourceInfo& operator=(SharedResourceInfo&&) = delete;
 	~SharedResourceInfo();
-	NOSProperty* SrcNosp = 0;
 	UPROPERTY()
 	TObjectPtr<UTextureRenderTarget2D> DstResource = 0;
 	HANDLE SharedHandle = 0;
-	nos::fb::ShowAs ShowAs;
 };
+
+struct TexturePropertyInfo
+{
+	TexturePropertyInfo(nos::fb::ShowAs InShowAs) : ShowAs(InShowAs) {}
+	TexturePropertyInfo(const TexturePropertyInfo&) = delete;
+	TexturePropertyInfo(TexturePropertyInfo&&) = delete;
+	TexturePropertyInfo& operator=(const TexturePropertyInfo&) = delete;
+	TexturePropertyInfo& operator=(TexturePropertyInfo&&) = delete;
+	nos::fb::ShowAs ShowAs = nos::fb::ShowAs::NONE;
+	UPROPERTY()
+	/// This might be null, so check before use
+	TSharedPtr<SharedResourceInfo> ActiveDestinationSharedResource;
+};
+
 //This class manages copy operations between textures of Nodos and unreal 2d texture target
 class NOSSCENETREEMANAGER_API NOSTextureShareManager
 {
@@ -88,12 +100,15 @@ public:
 	
 	nos::sys::vulkan::TTexture AddTexturePin(NOSProperty*);
 	void UpdateTexturePin(NOSProperty*, nos::fb::ShowAs);
-	bool UpdateTexturePin(NOSProperty* NosProperty, nos::sys::vulkan::TTexture& Texture);
+	
+	/// Checks properties RT against current SharedResource destination, updates the destination if needed and returns the new destination texture value
+	/// Returns nullopt if no change was needed
+	std::optional<nos::sys::vulkan::TTexture> GetUpdatedTexturePinValue(NOSProperty* NosProperty);
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
 	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
-	void ProcessCopies(nos::fb::ShowAs, TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>>& CopyMap);
+	void ProcessCopies(nos::fb::ShowAs);
 	void OnBeginFrame();
 	void OnEndFrame();
 	bool SwitchStateToSynced();
@@ -124,8 +139,13 @@ private:
 	UPROPERTY()
 	TQueue<TPair<TSharedPtr<SharedResourceInfo>, uint32_t>> ResourcesToDelete;
 	UPROPERTY()
-	TMap<NOSProperty*, TSharedPtr<SharedResourceInfo>> Copies;
-	bool CreateTextureResource(NOSProperty*, nos::sys::vulkan::TTexture& Texture, SharedResourceInfo& Resource);
+	/// All texture property values are checked against the current SharedResource destination each frame, so we must keep them
+	TMap<NOSProperty*, TSharedPtr<TexturePropertyInfo>> TextureProperties;
+
+	/// This compares the current SharedResource destination against the property's current render target(UE side)
+	/// If there is a difference, it creates a new SharedResource and deletes the old one
+	/// Also updates the nodos pin value and orphanness state
+	void CheckAndUpdateTexturePinValues();
 
 	void Initiate();
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;

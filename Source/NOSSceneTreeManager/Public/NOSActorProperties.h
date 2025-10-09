@@ -186,6 +186,8 @@ public:
 	FProperty* EditConditionProperty = nullptr;
 	bool IsAdvanced = false;
 	bool ReadOnly = false;
+	/// Currently only used for texture properties, if RT is not present or a suitable destination couldn't be created, pin is orphaned.
+	/// If we add more orphan reasons, we need to keep a list of orphan reasons instead of a single bool
 	bool IsOrphan = false;
 	FString OrphanMessage = " ";
 	std::string TypeName;
