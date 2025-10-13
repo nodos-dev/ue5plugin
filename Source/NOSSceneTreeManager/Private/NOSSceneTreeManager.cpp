@@ -1509,6 +1509,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				}
 			}
 
+			NOSProperty* nosProp = nullptr;
 			if (update.FunctionName.IsEmpty())
 			{
 				FProperty* PropertyToUpdate = FindFProperty<FProperty>(*update.PropertyPath);
@@ -1516,9 +1517,8 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 					continue;
 				if (!NOSPropertyManager.PropertiesByPropertyAndContainer.Contains({ PropertyToUpdate, UnknownContainer }))
 					continue;
-				NOSProperty* nosprop = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
-				PropertiesNeeded.Add(nosprop->Id);
-			}
+				nosProp = NOSPropertyManager.PropertiesByPropertyAndContainer.FindRef({ PropertyToUpdate, UnknownContainer }).Get();
+				}
 			else // Functions
 			{
 				if (!actor)
@@ -1560,9 +1560,15 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 
 					if (!match)
 						continue;
-					PropertiesNeeded.Add(prop->Id);
+					nosProp = prop.Get();
+					break;
 				}
 			}
+			if (!nosProp)
+				continue;
+			nosProp->PinShowAs = update.pinShowAs;
+			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(nosProp, update.pinShowAs);
+			PropertiesNeeded.Add(nosProp->Id);
 		}
 
 		std::unordered_set<TreeNode*> NodesSentUpdated;
@@ -1704,8 +1710,6 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 				NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
 				NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 				NewPortals.push_back(NewPortal);
-				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-				NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 			}
 		}
 
@@ -1770,8 +1774,6 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			NOSPropertyManager.PortalPinsById.Add(NewPortal.Id, NewPortal);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, NewPortal.Id);
 			NewPortals.push_back(NewPortal);
-			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), update.pinShowAs);
-			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, update.pinShowAs);
 		}
 	}
 	for (auto const& update : updates)
