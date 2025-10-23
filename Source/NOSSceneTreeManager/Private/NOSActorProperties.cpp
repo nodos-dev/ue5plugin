@@ -1431,6 +1431,10 @@ bool IsArrayPropertySupported(FArrayProperty* ArrayProperty)
 	return false;
 }
 
+FString FilterActorLabel(AActor* actor)
+{
+	return actor->ActorHasTag(FName("R_NO_NODE_HEADER")) ? "" : actor->GetActorLabel();
+}
 
 TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
                                                          FProperty* uproperty, 
@@ -1664,8 +1668,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 #endif
 
 	FString ActorUniqueName;
-	//update metadata
-	// prop->nosMetaDataMap.Add("property", uproperty->GetFName().ToString());
+	
 	prop->nosMetaDataMap.Add(NosMetadataKeys::PropertyPath, uproperty->GetPathName());
 	prop->nosMetaDataMap.Add(NosMetadataKeys::PropertyDisplayName, uproperty->GetDisplayNameText().ToString());
 	if (auto component = Cast<USceneComponent>(container))
@@ -1674,14 +1677,14 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		if (auto actor = component->GetOwner())
 		{
 			prop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
-			prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, actor->GetActorLabel());
+			prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
 			ActorUniqueName = actor->GetFName().ToString();
 		}
 	}
 	else if (auto actor = Cast<AActor>(container))
 	{
 		prop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
-		prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, actor->GetActorLabel());
+		prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
 		ActorUniqueName = actor->GetFName().ToString();
 	}
 	
