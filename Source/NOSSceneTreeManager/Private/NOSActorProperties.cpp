@@ -87,6 +87,7 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		static const FName NAME_ToolTip(TEXT("ToolTip"));
 		static const FName NAME_NOSCanShowAsOutput(TEXT("NOSCanShowAsOutput"));
 		static const FName NAME_NOSCanShowAsInput(TEXT("NOSCanShowAsInput"));
+		static const FName NAME_ReadOnly(TEXT("PinReadOnly"));
 
 		const auto& metaData = *metaDataMap;
 		DisplayName = metaData.Contains(NAME_DisplayName) ? metaData[NAME_DisplayName] : uproperty->GetFName().ToString();
@@ -123,7 +124,10 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		{
 			PinCanShowAs = nos::fb::CanShowAs::INPUT_PIN_OR_PROPERTY;
 		}
-		
+		if (metaData.Contains(NAME_ReadOnly))
+		{
+			ReadOnly = true;
+		}
 	}
 	else
 	{
