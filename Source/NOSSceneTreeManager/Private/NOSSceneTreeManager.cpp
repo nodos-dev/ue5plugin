@@ -568,7 +568,7 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 	}
 	else if (NOSPropertyManager.PropertiesById.Contains(pinId))
 	{
-		if (NOSPropertyManager.PropertyToPortalPin.Contains(pinId))
+		if (!NOSPropertyManager.PropertyToPortalPin.Contains(pinId))
 		{
 			NOSPropertyManager.CreatePortal(pinId, newShowAs);
 		}
