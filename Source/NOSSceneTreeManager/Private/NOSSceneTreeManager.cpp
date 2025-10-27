@@ -566,9 +566,12 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Custom Property ShowAs changed."));
 	}
-	else if (NOSPropertyManager.PropertiesById.Contains(pinId) && !NOSPropertyManager.PropertyToPortalPin.Contains(pinId))
+	else if (NOSPropertyManager.PropertiesById.Contains(pinId))
 	{
-		NOSPropertyManager.CreatePortal(pinId, newShowAs);
+		if (NOSPropertyManager.PropertyToPortalPin.Contains(pinId))
+		{
+			NOSPropertyManager.CreatePortal(pinId, newShowAs);
+		}
 	}
 	else
 	{
@@ -3455,6 +3458,11 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 {
 	if (!PropertiesById.Contains(PropertyId))
 	{
+		return;
+	}
+	if(PropertyToPortalPin.Contains(PropertyId))
+	{
+		LOG("Portal for this property already exists!");
 		return;
 	}
 	auto NOSProperty = PropertiesById.FindRef(PropertyId);
