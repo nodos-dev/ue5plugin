@@ -482,7 +482,7 @@ bool NOSLinoChannelProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, F
 		   TempChannel.name = std::string(TCHAR_TO_UTF8(*LinoChannelData.Name.ToString()));
 		   TempChannel.size.mutate_x(LinoChannelData.Size.X);
 		   TempChannel.size.mutate_y(LinoChannelData.Size.Y);
-		   TempChannel.preview = LinoChannelData.Preview;
+		   TempChannel.IsPreviewChannel = LinoChannelData.Preview;
 
            auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
            LinoChannelArray.push_back(offset);  
@@ -516,8 +516,8 @@ void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptA
 		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
 			LinoChannelData->Size = FIntPoint(Channel.size.x(), Channel.size.y());
 
-		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_PREVIEW))
-			LinoChannelData->Preview = Channel.preview;
+		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_ISPREVIEWCHANNEL))
+			LinoChannelData->Preview = Channel.IsPreviewChannel;
    }  
 }  
 
@@ -534,9 +534,9 @@ void NOSLinoChannelProperty::SetProperty_InCont(void* container, void* val)
    {  
 	   LinoChannelData->Size = FIntPoint(channel->size()->x(), channel->size()->y());
    }  
-   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_PREVIEW))
+   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_ISPREVIEWCHANNEL))
    {  
-	   LinoChannelData->Preview = channel->preview();
+	   LinoChannelData->Preview = channel->IsPreviewChannel();
    }  
 }
 
