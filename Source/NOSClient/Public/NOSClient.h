@@ -246,13 +246,16 @@ public:
 	virtual void ShutdownModule() override;
 
 	//This function is called when the connection with the Nodos Engine is started
-	virtual void Connected();
+	void Connected_GrpcThread();
+
+	void NodeImported_GrpcThread(const nos::fb::Node& node);
+	void NodeRemoved_GrpcThread();
 
 	//This function is called when the connection with the Nodos Engine is finished
-	virtual void Disconnected();
+	void Disconnected_GrpcThread();
 	 
 	/// @return Connection status with Nodos Engine
-	virtual bool IsConnected();
+	bool IsConnected();
 
 	//Tries to initialize connection with the Nodos engine
 	void TryConnect();
@@ -297,6 +300,7 @@ public:
 	static FGuid NodeId;
 	// The app key we are using for Nodos
 	static FString AppKey;
+	bool NodePresent_GrpcThread = false;
 
 	TMap<FGuid, FName> PathUpdates;
 

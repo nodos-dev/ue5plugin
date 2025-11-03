@@ -262,30 +262,17 @@ void NOSEventDelegates::OnAppConnected()
 	}
 
 	LOG("Connected to nosEngine");
-	PluginClient->Connected();
-
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient]()
-		{
-			NOSClient->OnNOSConnected.Broadcast();
-		});
-
-    
+	PluginClient->Connected_GrpcThread();
 }
 
 void NOSEventDelegates::OnConnectionClosed()
 {
 	LOG("Connection with Nodos is finished.");
-	FNOSClient::NodeId = {};
 	if (!PluginClient)
 	{
 		return;
 	}
-	PluginClient->Disconnected();
-	
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient]()
-		{
-			NOSClient->OnNOSConnectionClosed.Broadcast();
-		});
+	PluginClient->Disconnected_GrpcThread();
 }
 
 void NOSEventDelegates::OnStateChanged(nos::app::ExecutionState newState)
@@ -398,20 +385,7 @@ void NOSEventDelegates::OnNodeRemoved()
 	{
 		return;
 	}
-
-	if (PluginClient->NOSTimeStep.IsValid())
-	{
-		GEngine->SetCustomTimeStep(nullptr);
-		PluginClient->NOSTimeStep = nullptr;
-		PluginClient->CustomTimeStepBound = false;
-	}
-
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient]()
-		{
-			NOSClient->OnNOSPreNodeRemoved.Broadcast();
-			FNOSClient::NodeId = {};
-			NOSClient->OnNOSNodeRemoved.Broadcast();
-		});
+	PluginClient->NodeRemoved_GrpcThread();
 }
 
 void NOSEventDelegates::OnPinValueChanged(nos::fb::UUID const& pinId, uint8_t const* data, size_t size, bool reset, uint64_t frameNumber)
@@ -494,7 +468,6 @@ void NOSEventDelegates::OnContextMenuRequested(nos::app::AppContextMenuRequest c
 	{
 		return;
 	}
-
 	
 	nos::app::TAppContextMenuRequest copy;
 	request.UnPackTo(&copy);
@@ -536,18 +509,56 @@ void NOSEventDelegates::OnNodeImported(nos::fb::Node const& appNode)
 		return;
 	}
 
+	PluginClient->NodeImported_GrpcThread(appNode);
+}
 
-	nos::fb::TNode copy;
-	appNode.UnPackTo(&copy);
-	FNOSClient::NodeId = *(FGuid*)&copy.id;
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy]()
+FNOSClient::FNOSClient() {}
+
+bool FNOSClient::IsConnected()
+{
+	return AppServiceClient && AppServiceClient->IsConnected();
+}
+
+void FNOSClient::Connected_GrpcThread()
+{
+	TaskQueue.Enqueue([&]()
 		{
+			LOG("Sent map information to Nodos");
+			auto WorldContext = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport);
+			if (WorldContext->World())
+			{
+				nos::fb::TNodeStatusMessage MapNameStatus;
+				MapNameStatus.text = TCHAR_TO_UTF8(*WorldContext->World()->GetMapName());
+				MapNameStatus.type = nos::fb::NodeStatusMessageType::INFO;
+				UENodeStatusHandler.Add("map_name", MapNameStatus);
+			}
+			OnNOSConnected.Broadcast();
+		});
+}
+
+void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
+{
+	ensureMsgf(!NodePresent_GrpcThread, TEXT("Node is already present on import from Nodos!"));
+	NodePresent_GrpcThread = true;
+	nos::fb::TNode copy;
+	node.UnPackTo(&copy);
+	TaskQueue.Enqueue([this, copy = std::move(copy)]()
+		{
+			FNOSClient::NodeId = *(FGuid*)&copy.id;
+			if (!CustomTimeStepBound)
+			{
+				NOSTimeStep = NewObject<UNOSCustomTimeStep>();
+				NOSTimeStep->PluginClient = this;
+				if (GEngine->SetCustomTimeStep(NOSTimeStep.Get()))
+				{
+					CustomTimeStepBound = true;
+				}
+			}
 			flatbuffers::FlatBufferBuilder fbb;
 			auto offset = nos::fb::CreateNode(fbb, &copy);
 			fbb.Finish(offset);
 			auto buf = fbb.Release();
-			FNOSClient::NodeId = *(FGuid*)&copy.id;
-			NOSClient->OnNOSNodeImported.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
+			OnNOSNodeImported.Broadcast(*flatbuffers::GetRoot<nos::fb::Node>(buf.data()));
 
 			/*
 			auto WorldContext = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport);
@@ -561,37 +572,40 @@ void NOSEventDelegates::OnNodeImported(nos::fb::Node const& appNode)
 		});
 }
 
-FNOSClient::FNOSClient() {}
-
-bool FNOSClient::IsConnected()
+void FNOSClient::NodeRemoved_GrpcThread()
 {
-	return AppServiceClient && AppServiceClient->IsConnected();
-}
+	ensureMsgf(NodePresent_GrpcThread, TEXT("Node is not present on remove from Nodos!"));
 
-void FNOSClient::Connected()
-{
-	TaskQueue.Enqueue([&]()
-		{
-			LOG("Sent map information to Nodos");
-			auto WorldContext = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport);
-			if (WorldContext->World())
-			{
-				nos::fb::TNodeStatusMessage MapNameStatus;
-				MapNameStatus.text = TCHAR_TO_UTF8(*WorldContext->World()->GetMapName());
-				MapNameStatus.type = nos::fb::NodeStatusMessageType::INFO;
-				UENodeStatusHandler.Add("map_name", MapNameStatus);
-			}
-		});
-}
-
-void FNOSClient::Disconnected()
-{
-	if (NOSTimeStep.IsValid())
+	NodePresent_GrpcThread = false;
+	TaskQueue.Enqueue([this]()
 	{
-		GEngine->SetCustomTimeStep(nullptr);
-		NOSTimeStep = nullptr;
-		CustomTimeStepBound = false;
+		OnNOSPreNodeRemoved.Broadcast();
+		FNOSClient::NodeId = {};
+		OnNOSNodeRemoved.Broadcast();
+		if(NOSTimeStep.IsValid())
+		{
+			if (CustomTimeStepBound && GEngine->GetCustomTimeStep() == NOSTimeStep.Get())
+			{
+				GEngine->SetCustomTimeStep(nullptr);
+			}
+			NOSTimeStep = nullptr;
+			CustomTimeStepBound = false;
+		}
+	});
+
+}
+
+void FNOSClient::Disconnected_GrpcThread()
+{
+	if (NodePresent_GrpcThread)
+	{
+		NodeRemoved_GrpcThread();
 	}
+	TaskQueue.Enqueue([this]()
+	{
+		OnNOSConnectionClosed.Broadcast();
+	});
+
 }
 
 void FNOSClient::TryConnect()
@@ -627,17 +641,6 @@ void FNOSClient::TryConnect()
 	//{
 	//	Client->IsChannelReady = (GRPC_CHANNEL_READY == Client->Connect());
 	//}
-
-	 if (!CustomTimeStepBound && IsConnected())
-	 {
-	 	NOSTimeStep = NewObject<UNOSCustomTimeStep>();
-	 	NOSTimeStep->PluginClient = this;
-	 	if (GEngine->SetCustomTimeStep(NOSTimeStep.Get()))
-	 	{
-	 		CustomTimeStepBound = true;
-	 	}
-	 }
-	return;
 }
 
 void FNOSClient::Initialize()
