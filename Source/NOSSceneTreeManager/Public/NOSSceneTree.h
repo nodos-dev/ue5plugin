@@ -43,6 +43,7 @@ struct NOSSCENETREEMANAGER_API  TreeNode : public TSharedFromThis<TreeNode> {
 struct NOSSCENETREEMANAGER_API  ActorNode : TreeNode
 {
 	NOSActorReference actor;
+	FString NodosUniqueName;
 	std::vector<TSharedPtr<NOSProperty>> Properties;
 	std::vector<TSharedPtr<NOSFunction>> Functions;
 	virtual FString GetClassDisplayName() override { return actor ? actor->GetClass()->GetFName().ToString() : "Actor"; };

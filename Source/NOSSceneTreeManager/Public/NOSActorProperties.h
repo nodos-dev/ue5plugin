@@ -54,6 +54,13 @@ inline FGuid StringToFGuid(const FString& inString)
 #else
 	id = FGuid::NewGuid();
 #endif
+	// Check if GUID is unique and there's no hash collision
+	static std::mutex guidMutex;
+	static TMap<FGuid, TSet<FString>> guidMap;
+	std::lock_guard<std::mutex> lock(guidMutex);
+	auto& set = guidMap.FindOrAdd(id);
+	set.Add(inString);
+	assert(set.Num() <= 1 && "Hash collision detected for generated GUID!");
 	return id;
 }
 

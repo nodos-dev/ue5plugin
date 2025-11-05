@@ -874,6 +874,7 @@ struct NodeSpawnInfo
 	TMap<FString, FString> Metadata;
 	FString SpawnTag;
 	bool DontAttachToRealityParent = false;
+	FName NodeName;
 };
 
 void GetNodesSpawnedByNodos(const nos::fb::Node* node, TMap<TPair<FGuid, FGuid>, NodeSpawnInfo>& spawnedByNodos)
@@ -885,6 +886,7 @@ void GetNodesSpawnedByNodos(const nos::fb::Node* node, TMap<TPair<FGuid, FGuid>,
 			if (auto idEntry = node->meta_data_map()->LookupByKey(NosMetadataKeys::ActorGuid))
 			{
 				NodeSpawnInfo spawnInfo;
+				spawnInfo.NodeName = node->name()->c_str();
 				spawnInfo.SpawnTag = FString(entry->value()->c_str());
 				if(auto dontAttachToRealityParentEntry = node->meta_data_map()->LookupByKey(NosMetadataKeys::DoNotAttachToRealityParent))
 					spawnInfo.DontAttachToRealityParent = strcmp(dontAttachToRealityParentEntry->value()->c_str(), "true") == 0;
@@ -1330,7 +1332,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		if (!sceneActorMap.Contains(oldGuid.Key))
 		{
 			///spawn
-			AActor* spawnedActor = NOSActorManager->SpawnActor(spawnInfo.SpawnTag, {.SpawnActorToWorldCoords = spawnInfo.DontAttachToRealityParent}, spawnInfo.Metadata);
+			AActor* spawnedActor = NOSActorManager->SpawnActor(spawnInfo.SpawnTag, {.SpawnActorToWorldCoords = spawnInfo.DontAttachToRealityParent, .Name = spawnInfo.NodeName}, spawnInfo.Metadata);
 			if (spawnedActor)
 			{
 				sceneActorMap.Add(oldGuid.Key, spawnedActor); //this will map the old id with spawned actor in order to match the old properties (imported from disk)
@@ -3216,7 +3218,7 @@ AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters P
 		return nullptr;
 	}
 
-	AActor* SpawnedActor = NOSAssetManager->SpawnFromTag(SpawnTag, Params.SpawnTransform, Metadata);
+	AActor* SpawnedActor = NOSAssetManager->SpawnFromTag(SpawnTag, Params.SpawnTransform, Metadata, Params.Name);
 	if (!SpawnedActor)
 	{
 		return nullptr;
