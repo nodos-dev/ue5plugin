@@ -3,6 +3,8 @@
 #include "NOSSceneTree.h"
 #include "NOSSceneTreeManager.h"
 
+#include <regex>
+
 NOSSceneTree::NOSSceneTree()
 {
 	Root = TSharedPtr<FolderNode>(new FolderNode);
@@ -47,6 +49,7 @@ void NOSSceneTree::Clear()
 	ActorIdToNodeId.Empty();
 	NodeMap.Add(Root->Id, Root);
 	SceneComponentToNodeMap.Empty();
+	LastNodosSpawnedActorIndex = 0;
 }
 
 void NOSSceneTree::ClearRecursive(TSharedPtr<TreeNode> node)
@@ -62,13 +65,79 @@ void NOSSceneTree::ClearRecursive(TSharedPtr<TreeNode> node)
 	}
 }
 
-TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor)
+FString NOSSceneTree::GetGeneratedNodeNameForActor(FString Name)
 {
-	TSharedPtr<TreeNode> mostRecentParent;
-	return AddActor(folderPath, actor, mostRecentParent);
+	return FString::Printf(TEXT("%s__NodosSpawned_%llu"), *Name, LastNodosSpawnedActorIndex);
 }
 
-TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, TSharedPtr<TreeNode>& mostRecentParent)
+TSharedPtr<ActorNode> NOSSceneTree::CreateActorNode(TreeNode* Parent, AActor* Actor, FName NodosUniqueName)
+{
+	TSharedPtr<ActorNode> NewChild(new ActorNode);
+	NewChild->Parent = Parent;
+
+	if (FNOSSceneTreeManager::daWorld->PersistentLevel == Actor->GetLevel())
+	{
+		// TODO: Shouldn't this be actor->GetFName().ToString()?
+		NewChild->Name = Actor->GetActorLabel();
+		NewChild->Id = StringToFGuid(Actor->GetFName().ToString());
+	}
+	else
+	{
+		NewChild->Name = Actor->GetLevel()->GetOuter()->GetFName().ToString() + Actor->GetFName().ToString();
+		NewChild->Id = StringToFGuid(Actor->GetFullName(Actor->GetWorld()));
+	}
+	// Override name
+	if (Actor->Tags.Contains(FName("NodosSpawned")))
+	{
+		if (NodosUniqueName != NAME_None)
+		{
+			NewChild->Name = NodosUniqueName.ToString();
+			if (auto idx = GetActorIndexFromName(NewChild->Name))
+				if (*idx > LastNodosSpawnedActorIndex)
+					LastNodosSpawnedActorIndex = *idx;
+		}
+		else
+		{
+			++LastNodosSpawnedActorIndex;
+			NewChild->Name = GetGeneratedNodeNameForActor(NewChild->Name); 
+		}
+	}
+	NewChild->actor = NOSActorReference(Actor);
+	NewChild->NeedsReload = true;
+	Parent->Children.push_back(NewChild);
+	return NewChild;
+}
+
+std::optional<uint64_t> NOSSceneTree::GetActorIndexFromName(FString Name)
+{
+	static std::regex sPattern = std::regex(R"(.*__NodosSpawned_(\d+)$)");
+	std::smatch matches;
+	std::string stdName = TCHAR_TO_UTF8(*Name);
+	if (std::regex_match(stdName, matches, sPattern))
+	{
+		if (matches.size() == 2)
+		{
+			try
+			{
+				uint64_t index = std::stoull(matches[1].str());
+				return index;
+			}
+			catch (...)
+			{
+				return std::nullopt;
+			}
+		}
+	}
+	return std::nullopt;
+}
+
+TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, FName uniqueName)
+{
+	TSharedPtr<TreeNode> mostRecentParent;
+	return AddActor(folderPath, actor, mostRecentParent, uniqueName);
+}
+
+TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, TSharedPtr<TreeNode>& mostRecentParent, FName uniqueName)
 {
 	if (!actor)
 	{
@@ -86,23 +155,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, 
 		ptr = FindOrAddChildFolder(ptr, item, mostRecentParent);
 	}
 
-	TSharedPtr<ActorNode> newChild(new ActorNode);
-	newChild->Parent = ptr.Get();
-	//todo fix display names newChild->Name = actor->GetActorLabel();
-	if (FNOSSceneTreeManager::daWorld->PersistentLevel == actor->GetLevel())
-	{
-		// TODO: Shouldn't this be actor->GetFName().ToString()?
-		newChild->Name = actor->GetFName().ToString();
-		newChild->Id = StringToFGuid(actor->GetFName().ToString());
-	}
-	else
-	{
-		newChild->Name = actor->GetLevel()->GetOuter()->GetFName().ToString() + actor->GetFName().ToString();
-		newChild->Id = StringToFGuid(actor->GetFullName(actor->GetWorld()));
-	}
-	newChild->actor = NOSActorReference(actor);
-	newChild->NeedsReload = true;
-	ptr->Children.push_back(newChild);
+	TSharedPtr<ActorNode> newChild = CreateActorNode(ptr.Get(), actor, uniqueName);
 	NodeMap.Add(newChild->Id, newChild);
 	ActorIdToNodeId.Add(actor->GetActorGuid(), newChild->Id);
 	newChild->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
@@ -122,7 +175,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, 
 	return newChild;
 }
 
-TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor)
+TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor, FName uniqueName)
 {
 	if (!IsValid(FNOSSceneTreeManager::daWorld))
 		return nullptr;
@@ -136,23 +189,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor)
 		parent = Root.Get();
 	}
 
-	TSharedPtr<ActorNode> newChild(new ActorNode);
-	newChild->Parent = parent;
-
-	if (FNOSSceneTreeManager::daWorld->PersistentLevel == actor->GetLevel())
-	{
-		// TODO: Shouldn't this be actor->GetFName().ToString()?
-		newChild->Name = actor->GetActorLabel();
-		newChild->Id = StringToFGuid(actor->GetFName().ToString());
-	}
-	else
-	{
-		newChild->Name = actor->GetLevel()->GetOuter()->GetFName().ToString() + actor->GetFName().ToString();
-		newChild->Id = StringToFGuid(actor->GetFullName(actor->GetWorld()));
-	}
-	newChild->actor = NOSActorReference(actor);
-	newChild->NeedsReload = true;
-	parent->Children.push_back(newChild);
+	TSharedPtr<ActorNode> newChild = CreateActorNode(parent, actor, uniqueName);
 	NodeMap.Add(newChild->Id, newChild);
 	ActorIdToNodeId.Add(actor->GetActorGuid(), newChild->Id);
 	newChild->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
@@ -385,7 +422,6 @@ std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> TreeNode::SerializeMeta
 TreeNode::~TreeNode()
 {
 }
-
 
 SceneComponentNode::~SceneComponentNode()
 {

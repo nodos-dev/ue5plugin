@@ -64,6 +64,8 @@ public:
 struct SavedActorData
 {
 	TMap<FString, FString> Metadata;
+	FName NodosUniqueName;
+	FName NodosDisplayName;
 };
 
 class NOSSCENETREEMANAGER_API FNOSActorManager
@@ -97,7 +99,7 @@ public:
 	class FNOSClient* NOSClient;
 	
 	TSet<FGuid> ActorIds;
-	TArray< TPair<NOSActorReference,SavedActorData> > Actors;
+	TArray< TPair<NOSActorReference, SavedActorData> > Actors;
 };
 
 

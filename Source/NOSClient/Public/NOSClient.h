@@ -359,5 +359,3 @@ public:
 		NOSClient->AppServiceClient->Send(*root);
 	}
 };
-
-

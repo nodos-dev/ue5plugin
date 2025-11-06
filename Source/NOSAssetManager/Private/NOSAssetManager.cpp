@@ -253,46 +253,46 @@ void FNOSAssetManager::ScanAssets()
 
 void FNOSAssetManager::SetupCustomSpawns()
 {
-	CustomSpawns.Add("Cube", [this](FTransform Transform, FName Name)
+	CustomSpawns.Add("Cube", [this](NOSSpawnActorParameters Params)
 		{
-			return SpawnBasicShape(UActorFactoryBasicShape::BasicCube, Transform, Name);
+			return SpawnBasicShape(UActorFactoryBasicShape::BasicCube, Params);
 		});
-	CustomSpawns.Add("Sphere", [this](FTransform Transform, FName Name)
+	CustomSpawns.Add("Sphere", [this](NOSSpawnActorParameters Params)
 		{
-			return SpawnBasicShape(UActorFactoryBasicShape::BasicSphere, Transform, Name);
+			return SpawnBasicShape(UActorFactoryBasicShape::BasicSphere, Params);
 		});
-	CustomSpawns.Add("Cylinder", [this](FTransform Transform, FName Name)
+	CustomSpawns.Add("Cylinder", [this](NOSSpawnActorParameters Params)
 		{
-			return SpawnBasicShape(UActorFactoryBasicShape::BasicCylinder, Transform, Name);
+			return SpawnBasicShape(UActorFactoryBasicShape::BasicCylinder, Params);
 		});
-	CustomSpawns.Add("Cone", [this](FTransform Transform, FName Name)
+	CustomSpawns.Add("Cone", [this](NOSSpawnActorParameters Params)
 		{
-			return SpawnBasicShape(UActorFactoryBasicShape::BasicCone, Transform, Name);
+			return SpawnBasicShape(UActorFactoryBasicShape::BasicCone, Params);
 		});
-	CustomSpawns.Add("Plane", [this](FTransform Transform, FName Name)
+	CustomSpawns.Add("Plane", [this](NOSSpawnActorParameters Params)
 		{
-			return SpawnBasicShape(UActorFactoryBasicShape::BasicPlane, Transform, Name);
+			return SpawnBasicShape(UActorFactoryBasicShape::BasicPlane, Params);
 		});
-	CustomSpawns.Add("RealityParentTransform", [this](FTransform Transform, FName _)
+	CustomSpawns.Add("RealityParentTransform", [this](NOSSpawnActorParameters Params)
 		{
 			FActorSpawnParameters sp;
 			sp.bHideFromSceneOutliner = true;
 			sp.Name = "Reality Parent Transform Actor";
 			sp.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 			
-			AActor* SpawnedActor = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->SpawnActor(AActor::StaticClass(), &Transform, sp);
+			AActor* SpawnedActor = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->SpawnActor(AActor::StaticClass(), &Params.SpawnTransform, sp);
 			SpawnedActor->SetActorLabel("Reality Parent Transform Actor");
 			auto RootComponent = NewObject<USceneComponent>(SpawnedActor, FName("DefaultSceneRoot"));
 			SpawnedActor->SetRootComponent(RootComponent);
 			RootComponent->CreationMethod = EComponentCreationMethod::Instance;
 			RootComponent->RegisterComponent();
 			SpawnedActor->AddInstanceComponent(RootComponent);
-			
+			SpawnedActor->Tags.AddUnique(FName("NodosSpawned"));
 			return SpawnedActor;
 		});
 }
 
-AActor* FNOSAssetManager::SpawnBasicShape(FSoftObjectPath BasicShape, FTransform Transform, FName Name)
+AActor* FNOSAssetManager::SpawnBasicShape(FSoftObjectPath BasicShape, NOSSpawnActorParameters Params)
 {
 	UWorld* CurrentWorld = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World();
 
@@ -300,13 +300,15 @@ AActor* FNOSAssetManager::SpawnBasicShape(FSoftObjectPath BasicShape, FTransform
 	UObject* Asset = AssetData.GetAsset();
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.bHideFromSceneOutliner = HideFromOutliner();
-	SpawnParams.Name = Name;
+	SpawnParams.Name = Params.UniqueName;
+	SpawnParams.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 
 	// Implemented on base of UActorFactory::CreateActor
-	AActor* SpawnedActor = CurrentWorld->SpawnActor(AStaticMeshActor::StaticClass(), &Transform, SpawnParams);
+	AActor* SpawnedActor = CurrentWorld->SpawnActor(AStaticMeshActor::StaticClass(), &Params.SpawnTransform, SpawnParams);
 	if (SpawnedActor)
 	{
 		FActorLabelUtilities::SetActorLabelUnique(SpawnedActor, Asset->GetName());
+		SpawnedActor->Tags.AddUnique(FName("NodosSpawned"));
 
 		// Implemented on base of UActorFactoryBasicShape::PostSpawnActor
 		UStaticMesh* StaticMesh = Cast<UStaticMesh>(Asset);
@@ -330,7 +332,7 @@ AActor* FNOSAssetManager::SpawnBasicShape(FSoftObjectPath BasicShape, FTransform
 	return SpawnedActor;
 }
 
-AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTransform Transform, FName Name)
+AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, NOSSpawnActorParameters Params)
 {
 	TSoftClassPtr<AActor> ActorClass = TSoftClassPtr<AActor>(FSoftObjectPath(*AssetPath.ToString()));
 	UClass* LoadedAsset = ActorClass.LoadSynchronous();
@@ -341,17 +343,22 @@ AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTran
 
 	FActorSpawnParameters sp;
 	sp.bHideFromSceneOutliner = HideFromOutliner();
-	if (Name != NAME_None)
+	if (Params.UniqueName != NAME_None)
 	{
-		sp.Name = Name;
+		sp.Name = Params.UniqueName;
 		sp.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 	}
 	//todo look into hiding sp.bHideFromSceneOutliner = true;
-	AActor* SpawnedActor = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->SpawnActor(LoadedAsset, &Transform, sp);
+	AActor* SpawnedActor = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->SpawnActor(LoadedAsset, &Params.SpawnTransform, sp);
 	if (!SpawnedActor)
 	{
 		return nullptr;
 	}
+	if (Params.NodeDisplayName != NAME_None)
+	{
+		SpawnedActor->SetActorLabel(Params.NodeDisplayName.ToString());
+	}
+	SpawnedActor->Tags.AddUnique(FName("NodosSpawned"));
 	if (!SpawnedActor->GetRootComponent())
 	{
 		auto RootComponent = NewObject<USceneComponent>(SpawnedActor, FName("DefaultSceneRoot"));
@@ -364,25 +371,25 @@ AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTran
 	return SpawnedActor;
 }
 
-AActor* FNOSAssetManager::SpawnFromTag(FString SpawnTag, FTransform Transform, TMap<FString, FString> Metadata, FName Name)
+AActor* FNOSAssetManager::SpawnFromTag(FString SpawnTag, NOSSpawnActorParameters Params, TMap<FString, FString> Metadata)
 {	
+	AActor* SpawnedActor = nullptr;
 	if (CustomSpawns.Contains(SpawnTag))
 	{
-		return CustomSpawns[SpawnTag](Transform, Name);
+		SpawnedActor = CustomSpawns[SpawnTag](Params);
 	}
-	
-	if (CustomSpawnsWithMetadata.Contains(SpawnTag))
+	else if (CustomSpawnsWithMetadata.Contains(SpawnTag))
 	{
-		return CustomSpawnsWithMetadata[SpawnTag](Transform, Name, Metadata);
+		SpawnedActor = CustomSpawnsWithMetadata[SpawnTag](Params, Metadata);
 	}
-
-	if (SpawnableAssets.Contains(SpawnTag))
+	else if (SpawnableAssets.Contains(SpawnTag))
 	{
 		FTopLevelAssetPath AssetPath = SpawnableAssets.FindRef(SpawnTag);
-		return SpawnFromAssetPath(AssetPath, Transform, Name);
+		SpawnedActor = SpawnFromAssetPath(AssetPath, Params);
 	}
-	
-	return nullptr;
+	if (SpawnedActor)
+		SpawnedActor->Tags.AddUnique(FName("NodosSpawned"));
+	return SpawnedActor;
 }
 
 UUserWidget* FNOSAssetManager::CreateUMGFromTag(FString UMGTag)

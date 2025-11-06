@@ -13,6 +13,8 @@
 
 #include "GenericPlatform/GenericPlatformMisc.h"
 
+#include "NOSSpawnActorParameters.h"
+
 inline FString PrefixStringList(const FString& inString)
 {
 	return FNOSClient::AppKey + "_" + inString;
@@ -53,13 +55,13 @@ public:
 
 	void SetupCustomSpawns();
 
-	AActor* SpawnBasicShape(FSoftObjectPath BasicShape, FTransform Transform = FTransform::Identity, FName ActorName = NAME_None);
+	AActor* SpawnBasicShape(FSoftObjectPath BasicShape, NOSSpawnActorParameters Params);
 
 	void ScanUMGs();
 
-	AActor* SpawnFromTag(FString SpawnTag, FTransform Transform = FTransform::Identity, TMap<FString, FString> Metadata = {}, FName Name = NAME_Name);
+	AActor* SpawnFromTag(FString SpawnTag, NOSSpawnActorParameters Params, TMap<FString, FString> Metadata = {});
 
-	AActor* SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTransform Transform = FTransform::Identity, FName Name = NAME_Name);
+	AActor* SpawnFromAssetPath(FTopLevelAssetPath AssetPath, NOSSpawnActorParameters Params = {});
 
 	UUserWidget* CreateUMGFromTag(FString UMGTag);
 
@@ -81,9 +83,9 @@ public:
 	UObject* FindRenderTarget(const FString& Name);
 
 	//for custom spawnables like basic shapes(cube, sphere etc.)
-	TMap<FString, TFunction<AActor*(FTransform Transform, FName ActorName)>> CustomSpawns;
+	TMap<FString, TFunction<AActor*(NOSSpawnActorParameters)>> CustomSpawns;
 
-	TMap<FString, TFunction<AActor*(FTransform Transform, FName ActorName, TMap<FString, FString>)>> CustomSpawnsWithMetadata;
+	TMap<FString, TFunction<AActor*(NOSSpawnActorParameters, TMap<FString, FString>)>> CustomSpawnsWithMetadata;
 	
 	//Class communicates with Nodos
 	class FNOSClient* NOSClient = nullptr;
