@@ -300,8 +300,6 @@ AActor* FNOSAssetManager::SpawnBasicShape(FSoftObjectPath BasicShape, NOSSpawnAc
 	UObject* Asset = AssetData.GetAsset();
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.bHideFromSceneOutliner = HideFromOutliner();
-	SpawnParams.Name = Params.UniqueName;
-	SpawnParams.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 
 	// Implemented on base of UActorFactory::CreateActor
 	AActor* SpawnedActor = CurrentWorld->SpawnActor(AStaticMeshActor::StaticClass(), &Params.SpawnTransform, SpawnParams);
@@ -343,11 +341,6 @@ AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, NOSSp
 
 	FActorSpawnParameters sp;
 	sp.bHideFromSceneOutliner = HideFromOutliner();
-	if (Params.UniqueName != NAME_None)
-	{
-		sp.Name = Params.UniqueName;
-		sp.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
-	}
 	//todo look into hiding sp.bHideFromSceneOutliner = true;
 	AActor* SpawnedActor = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->SpawnActor(LoadedAsset, &Params.SpawnTransform, sp);
 	if (!SpawnedActor)
