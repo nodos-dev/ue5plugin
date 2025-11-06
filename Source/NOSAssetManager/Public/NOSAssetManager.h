@@ -59,7 +59,7 @@ public:
 
 	AActor* SpawnFromTag(FString SpawnTag, FTransform Transform = FTransform::Identity, TMap<FString, FString> Metadata = {}, FName Name = NAME_Name);
 
-	AActor* SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTransform Transform = FTransform::Identity, std::optional<FName> Name = std::nullopt);
+	AActor* SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTransform Transform = FTransform::Identity, FName Name = NAME_Name);
 
 	UUserWidget* CreateUMGFromTag(FString UMGTag);
 

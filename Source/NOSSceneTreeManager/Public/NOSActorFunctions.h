@@ -56,7 +56,7 @@ struct NOSSCENETREEMANAGER_API NOSSpawnActorParameters
 {
 	bool SpawnActorToWorldCoords = false;
 	FTransform SpawnTransform = FTransform::Identity;
-	std::optional<FName> Name = std::nullopt;
+	FName Name = NAME_None;
 };
 
 void NOSSCENETREEMANAGER_API FillSpawnActorFunctionTransformPins(flatbuffers::FlatBufferBuilder& Fbb,

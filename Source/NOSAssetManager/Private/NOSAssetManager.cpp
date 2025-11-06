@@ -330,7 +330,7 @@ AActor* FNOSAssetManager::SpawnBasicShape(FSoftObjectPath BasicShape, FTransform
 	return SpawnedActor;
 }
 
-AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTransform Transform, std::optional<FName> Name)
+AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTransform Transform, FName Name)
 {
 	TSoftClassPtr<AActor> ActorClass = TSoftClassPtr<AActor>(FSoftObjectPath(*AssetPath.ToString()));
 	UClass* LoadedAsset = ActorClass.LoadSynchronous();
@@ -341,9 +341,9 @@ AActor* FNOSAssetManager::SpawnFromAssetPath(FTopLevelAssetPath AssetPath, FTran
 
 	FActorSpawnParameters sp;
 	sp.bHideFromSceneOutliner = HideFromOutliner();
-	if (Name)
+	if (Name != NAME_None)
 	{
-		sp.Name = *Name;
+		sp.Name = Name;
 		sp.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 	}
 	//todo look into hiding sp.bHideFromSceneOutliner = true;
