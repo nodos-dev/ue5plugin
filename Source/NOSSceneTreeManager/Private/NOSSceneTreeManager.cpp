@@ -874,6 +874,8 @@ struct NodeSpawnInfo
 	TMap<FString, FString> Metadata;
 	FString SpawnTag;
 	bool DontAttachToRealityParent = false;
+	FName NodeUniqueName;
+	FName NodeDisplayName;
 };
 
 void GetNodesSpawnedByNodos(const nos::fb::Node* node, TMap<TPair<FGuid, FGuid>, NodeSpawnInfo>& spawnedByNodos)
@@ -885,6 +887,8 @@ void GetNodesSpawnedByNodos(const nos::fb::Node* node, TMap<TPair<FGuid, FGuid>,
 			if (auto idEntry = node->meta_data_map()->LookupByKey(NosMetadataKeys::ActorGuid))
 			{
 				NodeSpawnInfo spawnInfo;
+				spawnInfo.NodeUniqueName = node->name()->c_str();
+				spawnInfo.NodeDisplayName = node->display_name() ? node->display_name()->c_str() : node->name()->c_str();
 				spawnInfo.SpawnTag = FString(entry->value()->c_str());
 				if(auto dontAttachToRealityParentEntry = node->meta_data_map()->LookupByKey(NosMetadataKeys::DoNotAttachToRealityParent))
 					spawnInfo.DontAttachToRealityParent = strcmp(dontAttachToRealityParentEntry->value()->c_str(), "true") == 0;
@@ -1330,7 +1334,13 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		if (!sceneActorMap.Contains(oldGuid.Key))
 		{
 			///spawn
-			AActor* spawnedActor = NOSActorManager->SpawnActor(spawnInfo.SpawnTag, {.SpawnActorToWorldCoords = spawnInfo.DontAttachToRealityParent}, spawnInfo.Metadata);
+			NOSSpawnActorParameters SpawnParams
+			{
+				 .SpawnActorToWorldCoords = spawnInfo.DontAttachToRealityParent,
+				 .UniqueName = spawnInfo.NodeUniqueName,
+				 .NodeDisplayName = spawnInfo.NodeDisplayName
+			};
+			AActor* spawnedActor = NOSActorManager->SpawnActor(spawnInfo.SpawnTag, SpawnParams, spawnInfo.Metadata);
 			if (spawnedActor)
 			{
 				sceneActorMap.Add(oldGuid.Key, spawnedActor); //this will map the old id with spawned actor in order to match the old properties (imported from disk)
@@ -2584,7 +2594,7 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 				return;
 			}
 			flatbuffers::FlatBufferBuilder mb;
-			std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = { newNode->Serialize(mb) };
+			std::vector graphNodes = { newNode->Serialize(mb) };
 			auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&parentNode->Id, nos::ClearFlags::NONE, 0, 0, 0, 0, 0, &graphNodes);
 			mb.Finish(offset);
 			auto buf = mb.Release();
@@ -3216,7 +3226,7 @@ AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters P
 		return nullptr;
 	}
 
-	AActor* SpawnedActor = NOSAssetManager->SpawnFromTag(SpawnTag, Params.SpawnTransform, Metadata);
+	AActor* SpawnedActor = NOSAssetManager->SpawnFromTag(SpawnTag, Params, Metadata);
 	if (!SpawnedActor)
 	{
 		return nullptr;
@@ -3237,10 +3247,10 @@ AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters P
 	savedMetadata.Add({ NosMetadataKeys::NodeColor, HEXCOLOR_Reality_Node});
 	savedMetadata.Add({ NosMetadataKeys::ActorGuid, SpawnedActor->GetActorGuid().ToString()});
 	savedMetadata.Add(NosMetadataKeys::DoNotAttachToRealityParent, FString(Params.SpawnActorToWorldCoords ? "true" : "false"));
-	SavedActorData savedData = {savedMetadata};
+	SavedActorData savedData = {savedMetadata, Params.UniqueName, Params.NodeDisplayName};
 	Actors.Add({ NOSActorReference(SpawnedActor), savedData});
 	TSharedPtr<TreeNode> mostRecentParent;
-	TSharedPtr<ActorNode> ActorNode = SceneTree.AddActor(NAME_Reality_FolderName.ToString(), SpawnedActor, mostRecentParent);
+	TSharedPtr<ActorNode> ActorNode = SceneTree.AddActor(NAME_Reality_FolderName.ToString(), SpawnedActor, mostRecentParent, Params.UniqueName);
 	for(auto& [key, value] : Metadata)
 		ActorNode->nosMetaData.Add({ key, value});
 	ActorNode->nosMetaData.Add({ NosMetadataKeys::spawnTag, SpawnTag});
@@ -3289,7 +3299,7 @@ AActor* FNOSActorManager::SpawnUMGRenderManager(FString umgTag, UUserWidget* wid
 	}
 
 	FString SpawnTag("CustomUMGRenderManager");
-	AActor* UMGManager = NOSAssetManager->SpawnFromTag(SpawnTag);
+	AActor* UMGManager = NOSAssetManager->SpawnFromTag(SpawnTag, {});
 	if (!UMGManager)
 	{
 		return nullptr;
@@ -3400,7 +3410,7 @@ void FNOSActorManager::ReAddActorsToSceneTree()
 				continue;
 			}
 
-			auto ActorNode = SceneTree.AddActor(NAME_Reality_FolderName.ToString(), actor);
+			auto ActorNode = SceneTree.AddActor(NAME_Reality_FolderName.ToString(), actor, SavedData.NodosUniqueName);
 			for(auto [key, value] : SavedData.Metadata)
 			{
 				ActorNode->nosMetaData.Add(key, value);

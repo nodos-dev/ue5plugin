@@ -52,12 +52,6 @@ struct NOSSCENETREEMANAGER_API NOSSpawnActorFunctionPinIds
 	FGuid SpawnScalePinId;
 };
 
-struct NOSSCENETREEMANAGER_API NOSSpawnActorParameters
-{
-	bool SpawnActorToWorldCoords = false;
-	FTransform SpawnTransform = FTransform::Identity;
-};
-
 void NOSSCENETREEMANAGER_API FillSpawnActorFunctionTransformPins(flatbuffers::FlatBufferBuilder& Fbb,
                                                                 std::vector<flatbuffers::Offset<nos::fb::Pin>>&SpawnPins,
                                                                 NOSSpawnActorFunctionPinIds const& PinIds);

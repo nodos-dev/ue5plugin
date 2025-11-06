@@ -82,9 +82,9 @@ public:
 	bool IsSorted = false;
 
 	TSharedPtr<FolderNode> FindOrAddChildFolder(TSharedPtr<TreeNode> node, FString name, TSharedPtr<TreeNode>& mostRecentParent);
-	TSharedPtr<ActorNode> AddActor(FString folderPath, AActor* actor);
-	TSharedPtr<ActorNode> AddActor(::FString folderPath, ::AActor* actor, TSharedPtr<TreeNode>& mostRecentParent);
-	TSharedPtr<ActorNode> AddActor(TreeNode* parent, AActor* actor);
+	TSharedPtr<ActorNode> AddActor(FString folderPath, AActor* actor, FName uniqueName = NAME_None);
+	TSharedPtr<ActorNode> AddActor(::FString folderPath, ::AActor* actor, TSharedPtr<TreeNode>& mostRecentParent, FName uniqueName = NAME_None);
+	TSharedPtr<ActorNode> AddActor(TreeNode* parent, AActor* actor, FName uniqueName = NAME_None);
 	TSharedPtr<SceneComponentNode> AddSceneComponent(ActorNode* parent, USceneComponent* sceneComponent);
 	TSharedPtr<SceneComponentNode> AddSceneComponent(TSharedPtr<SceneComponentNode> parent, USceneComponent* sceneComponent);
 	ActorNode* GetNode(AActor* Actor);
@@ -97,10 +97,14 @@ public:
 	SceneComponentNode* GetSceneComponentNode(USceneComponent* SceneComponent);
 
 	void Clear();
-
 private:
 	TMap<FGuid, TSharedPtr<TreeNode>> NodeMap;
 	TMap<FGuid, FGuid> ActorIdToNodeId;
 	TMap<USceneComponent*, TSharedPtr<SceneComponentNode>> SceneComponentToNodeMap;
 	void ClearRecursive(TSharedPtr<TreeNode> node);
+
+	uint64_t LastNodosSpawnedActorIndex = 0;
+	static std::optional<uint64_t> GetActorIndexFromName(FString Name);
+	FString GetGeneratedNodeNameForActor(FString Name);
+	TSharedPtr<ActorNode> CreateActorNode(TreeNode* Parent, AActor* Actor, FName NodosUniqueName = NAME_None);
 };
