@@ -44,14 +44,6 @@
 			]
 		},
 		{
-			"Name": "NOSLicenseManager",
-			"Type": "UncookedOnly",
-			"LoadingPhase": "PostEngineInit",
-			"PlatformAllowList": [
-				"Win64"
-			]
-		},
-		{
 			"Name": "NOSViewportManager",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default",
