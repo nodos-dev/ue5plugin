@@ -28,6 +28,7 @@
 #include "NOSGPUFailSafe.h"
 
 #include "nosVulkanSubsystem/nosVulkanSubsystem.h"
+#include "nosVulkanSubsystem/ResourceShare_generated.h"
 
 NOSTextureShareManager* NOSTextureShareManager::singleton;
 
@@ -183,7 +184,24 @@ nos::sys::vulkan::TTexture NOSTextureShareManager::AddTexturePin(NOSProperty* no
 	}
 	nosprop->IsOrphan = false;
 	texPropInfo.ActiveDestinationSharedResource = std::move(copyInfoTexPair->first);
+	ImportResource(reinterpret_cast<nos::fb::UUID const&>(nosprop->Id), copyInfoTexPair->second);
 	return copyInfoTexPair->second;
+}
+
+void NOSTextureShareManager::ImportResource(nos::fb::UUID const& pinId, nos::sys::vulkan::TTexture tex)
+{
+	flatbuffers::FlatBufferBuilder fbb;
+	nos::sys::vulkan::TImportResource importResource;
+	importResource.pin_id = std::make_unique<nos::fb::UUID>(pinId);
+	importResource.external_resource.Set(std::move(tex));
+	nos::sys::vulkan::TResourceShareMessage msg;
+	msg.message.Set(std::move(importResource));
+	std::vector<uint8_t> importResourceMsgBuf = nos::Buffer::From(msg);
+	auto offset = nos::CreateAppEventOffset(fbb, nos::app::CreateCustomMessageDirect(fbb, "nos.sys.vulkan", "nos.sys.vulkan.ResourceShareMessage", &importResourceMsgBuf));
+	fbb.Finish(offset);
+	auto buf = fbb.Release();
+	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+	NOSClient->AppServiceClient->Send(root);
 }
 
 void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
@@ -197,12 +215,10 @@ void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
 		auto newDestPtr = texPropInfo->ActiveDestinationSharedResource.Get();
 		if (oldDestPtr != newDestPtr)
 		{
-			flatbuffers::FlatBufferBuilder mb;
-			auto offset2 = nos::app::CreateSetPinValueDirect(mb, (nos::fb::UUID*)&prop->Id, &prop->data);
-			mb.Finish(offset2);
-			auto buf = mb.Release();
-			auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
-			NOSClient->AppServiceClient->NotifyPinValueChanged(root);
+			auto texRoot = flatbuffers::GetRoot<nos::sys::vulkan::Texture>(prop->data.data());
+			nos::sys::vulkan::TTexture tex;
+			texRoot->UnPackTo(&tex);
+			ImportResource(reinterpret_cast<nos::fb::UUID const&>(prop->Id), std::move(tex));
 		}
 	}
 }

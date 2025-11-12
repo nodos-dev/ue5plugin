@@ -113,6 +113,7 @@ public:
 	void OnEndFrame();
 	bool SwitchStateToSynced();
 	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
+	void ImportResource(nos::fb::UUID const& pinId, nos::sys::vulkan::TTexture tex);
 
 	class FNOSClient* NOSClient;
 	

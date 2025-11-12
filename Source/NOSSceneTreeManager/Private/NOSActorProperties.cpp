@@ -1768,9 +1768,9 @@ bool NOSActorReference::UpdateActorPointer(UWorld* World)
 bool NOSActorReference::UpdateActualActorPointer()
 {
 	UWorld* World;
-	if (FNOSSceneTreeManager::daWorld)
+	if (FNOSSceneTreeManager::TheWorld)
 	{
-		World = FNOSSceneTreeManager::daWorld;
+		World = FNOSSceneTreeManager::TheWorld;
 	}
 	else
 	{

@@ -81,7 +81,7 @@ FString FNodos::GetNodosSDKDir()
 bool FNodos::Initialize()
 {
 	FString SdkPath = GetNodosSDKDir();
-	FString SdkBinPath = FPaths::Combine(SdkPath, TEXT("bin"));
+	FString SdkBinPath = FPaths::Combine(SdkPath, TEXT("Binaries"));
 	FPlatformProcess::PushDllDirectory(*SdkBinPath);
 	FString SdkDllPath = FPaths::Combine(SdkBinPath, "nosAppSDK.dll");
 
@@ -170,88 +170,6 @@ TMap<FGuid, const nos::fb::Pin*> ParsePins(const nos::fb::Node* archive)
 		re.Add(*(FGuid*)pin->id()->bytes()->Data(), pin);
 	}
 	return re;
-}
-
-void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
-{
-	using namespace nos::app;
-	switch (event->event_type())
-	{
-	case EngineEventUnion::AppConnectedEvent: {
-		OnAppConnected();
-		break;
-	}
-	case EngineEventUnion::AppContextMenuRequest: {
-		OnContextMenuRequested(*event->event_as<AppContextMenuRequest>());
-		break;
-	}
-	case EngineEventUnion::AppContextMenuAction: {
-		OnContextMenuCommandFired(*event->event_as<AppContextMenuAction>());
-		break;
-	}
-	case EngineEventUnion::NodeRemovedEvent: {
-		OnNodeRemoved();
-		break;
-	}
-	case EngineEventUnion::AppPinShowAsChanged: {
-		auto const& pinShowAsChanged = event->event_as<AppPinShowAsChanged>();
-		OnPinShowAsChanged(*pinShowAsChanged->pin_id(), pinShowAsChanged->show_as());
-		break;
-	}
-	case EngineEventUnion::AppPinValueChanged: {
-		auto const& pinValueChanged = event->event_as<AppPinValueChanged>();
-		OnPinValueChanged(*pinValueChanged->pin_id(),
-			pinValueChanged->value()->Data(),
-			pinValueChanged->value()->size(),
-			pinValueChanged->reset(),
-			pinValueChanged->frame_number());
-		break;
-	}
-	case EngineEventUnion::FunctionCall: {
-		auto const& functionCall = event->event_as<nos::app::FunctionCall>();
-		OnFunctionCall(functionCall);
-		break;
-	}
-	case EngineEventUnion::NotifyNodeSelected: {
-		OnNodeSelected(*event->event_as<NotifyNodeSelected>()->node_id());
-		break;
-	}
-	case EngineEventUnion::NodeImported: {
-		OnNodeImported(*event->event_as<nos::app::NodeImported>()->node());
-		break;
-	}
-
-	case EngineEventUnion::StateChanged: {
-		OnStateChanged(event->event_as<nos::app::StateChanged>()->state());
-		break;
-	}
-	case EngineEventUnion::TerminationRequest: {
-		OnCloseApp();
-		break;
-	}
-	case EngineEventUnion::ConsoleCommand: {
-		OnConsoleCommand(event->event_as<nos::app::ConsoleCommand>());
-		break;
-	}
-	case EngineEventUnion::ConsoleAutoCompleteSuggestionRequest: {
-		OnConsoleAutoCompleteSuggestionRequest(event->event_as<nos::app::ConsoleAutoCompleteSuggestionRequest>());
-		break;
-	}
-	case EngineEventUnion::AppExecuteInfo: {
-		OnExecuteAppInfo(event->event_as<nos::app::AppExecuteInfo>());
-		break;
-	}
-	case EngineEventUnion::LoadNodesOnPaths: {
-		OnLoadNodesOnPaths(event->event_as<nos::app::LoadNodesOnPaths>());
-		break;
-	}
-	case EngineEventUnion::AppExecuteStart: {
-		OnExecuteStart(event->event_as<nos::app::AppExecuteStart>());
-		break;
-	}
-	default:
-		break;
-	}
 }
 
 void NOSEventDelegates::OnAppConnected()
