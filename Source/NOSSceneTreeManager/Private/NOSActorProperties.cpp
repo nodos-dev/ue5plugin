@@ -40,8 +40,13 @@ bool PropertyVisibleExp(FProperty* ueproperty)
 }
 
 NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString parentCategory, uint8* structPtr, NOSStructProperty* parentProperty)
+	: NOSProperty(FGuid::NewGuid(), container, uproperty, parentCategory, structPtr, parentProperty)
 {
-	Id = FGuid::NewGuid();
+}
+
+NOSProperty::NOSProperty(FGuid id, UObject* container, FProperty* uproperty, FString parentCategory, uint8* structPtr, NOSStructProperty* parentProperty)
+{
+	this->Id = id;
 
 	if (!container && !uproperty)
 		return;
@@ -782,10 +787,24 @@ flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBuffer
 	if (TypeName == nos::Generic::GetFullyQualifiedName() || TypeName.size() < 1)
 	{
 		ensureMsgf(false, TEXT("Property %s cannot be serialized!"), *PropertyName);
-		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(), nos::fb::ShowAs::PROPERTY, PinCanShowAs, 0, &data, 0, 0, 0, 0, &default_val, 0, ReadOnly, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(),
+		                                nos::fb::ShowAs::PROPERTY, PinCanShowAs, 0, &data, 0, 0, 0, 0, &default_val, 0, ReadOnly, transient,
+		                                &metadata, 0, nos::fb::PinContents::JobPin, 0,
+		                                nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN,
+		                                                                    TCHAR_TO_UTF8(TEXT("Unknown type!"))),
+		                                nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText),
+		                                TCHAR_TO_UTF8(*displayName));
 	}
 	bool isTexture = TypeName == nos::sys::vulkan::Texture::GetFullyQualifiedName();
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, 0, &data, 0, 0, &min_val, &max_val, &default_val, 0, ReadOnly, transient, &metadata, isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)  /*If texture and can be output, then it should be live to let auto sync multi out work*/, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, 0, &data, 0, 0,
+									&min_val, &max_val, &default_val, 0, ReadOnly, transient, &metadata,
+									isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)
+									/*If texture and can be output, then it should be live to let auto sync multi out work*/,
+									nos::fb::PinContents::JobPin, 0,
+									nos::fb::CreatePinOrphanStateDirect(
+										fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE,
+										TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+									TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 }
 
 std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> NOSProperty::SerializeMetaData(flatbuffers::FlatBufferBuilder& fbb)
@@ -976,8 +995,8 @@ std::vector<uint8> NOSArrayProperty::UpdatePinValue(uint8* customContainer)
 
 bool PropertyVisible(FProperty* ueproperty);
 
-NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uproperty, FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
-	: NOSProperty(container, uproperty, parentCategory, StructPtr, parentProperty), objectprop(uproperty)
+NOSObjectProperty::NOSObjectProperty(FGuid Id, UObject* container, FObjectProperty* uproperty, FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
+	: NOSProperty(Id, container, uproperty, parentCategory, StructPtr, parentProperty), objectprop(uproperty)
 {
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
 	{
@@ -1461,6 +1480,28 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 	//CAST THE PROPERTY ACCORDINGLY
 	uproperty->GetClass();
 	
+	FString ActorUniqueName;
+	FString PropertyPath = uproperty->GetPathName();
+	FString ComponentPath;
+	if (auto component = Cast<USceneComponent>(container))
+	{
+		ComponentPath = component->GetFName().ToString();
+		if (auto actor = component->GetOwner())
+		{
+			ActorUniqueName = actor->GetFName().ToString();
+		}
+	}
+	else if (auto actor = Cast<AActor>(container))
+	{
+		ActorUniqueName = actor->GetFName().ToString();
+	}
+	FString IdStringKey = ActorUniqueName + ComponentPath + PropertyPath;
+	
+	// FProperty* tryprop = FindFProperty<FProperty>(*uproperty->GetPathName());
+	//UE_LOG(LogNOSSceneTreeManager, Warning, TEXT("name of the prop before %s, found property name %s"),*uproperty->GetFName().ToString(),  *tryprop->GetFName().ToString());
+
+	auto IdToUse = StringToFGuid(IdStringKey);
+	
 	if(CastField<FNumericProperty>(uproperty) && CastField<FNumericProperty>(uproperty)->IsEnum())
 	{
 		FNumericProperty* numericprop = CastField<FNumericProperty>(uproperty);
@@ -1535,7 +1576,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		{
 			return nullptr;
 		}
-		prop = TSharedPtr<NOSProperty>(new NOSObjectProperty(container, objectprop, parentCategory, StructPtr, parentProperty));
+		prop = TSharedPtr<NOSProperty>(new NOSObjectProperty(IdToUse, container, objectprop, parentCategory, StructPtr, parentProperty));
 	}
 	else if (FArrayProperty* arrayprop = CastField<FArrayProperty>(uproperty))
 	{
@@ -1680,8 +1721,6 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		//uproperty->ContainerPtrToValuePtrForDefaults()
 	}
 #endif
-
-	FString ActorUniqueName;
 	
 	prop->nosMetaDataMap.Add(NosMetadataKeys::PropertyPath, uproperty->GetPathName());
 	prop->nosMetaDataMap.Add(NosMetadataKeys::PropertyDisplayName, uproperty->GetDisplayNameText().ToString());
@@ -1692,24 +1731,14 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		{
 			prop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
 			prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
-			ActorUniqueName = actor->GetFName().ToString();
 		}
 	}
 	else if (auto actor = Cast<AActor>(container))
 	{
 		prop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
 		prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
-		ActorUniqueName = actor->GetFName().ToString();
 	}
-	
-	// FProperty* tryprop = FindFProperty<FProperty>(*uproperty->GetPathName());
-	//UE_LOG(LogNOSSceneTreeManager, Warning, TEXT("name of the prop before %s, found property name %s"),*uproperty->GetFName().ToString(),  *tryprop->GetFName().ToString());
-
-
-	FString PropertyPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
-	FString ComponentPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::component);
-	FString IdStringKey = ActorUniqueName + ComponentPath + PropertyPath;
-	prop->Id = StringToFGuid(IdStringKey);
+	prop->Id = IdToUse;
 	return prop;
 }
 

@@ -43,8 +43,7 @@ FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 
 void* FNodos::LibHandle = nullptr;
-FN_MakeAppServiceClient FNodos::MakeAppServiceClient = nullptr;
-FN_ShutdownClient FNodos::ShutdownClient = nullptr;
+std::optional<nos::app::AppApi> FNodos::Api = std::nullopt;
 
 FString FNodos::GetNodosSDKDir()
 {
@@ -110,23 +109,27 @@ bool FNodos::Initialize()
 		return false;
 	}
 
-	auto CheckCompatible = (FN_CheckSDKCompatibility)FPlatformProcess::GetDllExport(LibHandle, TEXT("CheckSDKCompatibility"));
-	bool IsCompatible = CheckCompatible && CheckCompatible(NOS_APPLICATION_SDK_VERSION_MAJOR, NOS_APPLICATION_SDK_VERSION_MINOR, NOS_APPLICATION_SDK_VERSION_PATCH);
-	if (!IsCompatible)
+	// Initialize Nodos SDK
+	struct DXAppProcLoader : nos::app::AppApiProcLoader
+	{
+		DXAppProcLoader(void* module) : ApiModule(module)
+		{
+		}
+
+		ProcFuncPtr GetProcAddress(const char* name) const override
+		{
+			return (ProcFuncPtr)FPlatformProcess::GetDllExport(ApiModule, UTF8_TO_TCHAR(name));
+		}
+		void* ApiModule;
+	};
+
+	std::shared_ptr<DXAppProcLoader> procLoader = std::make_shared<DXAppProcLoader>(LibHandle);
+	Api = nos::app::AppApi::Create(procLoader);
+	if (!Api)
 	{
 		UE_LOG(LogNOSClient, Error, TEXT("Nodos SDK is incompatible with the plugin. The plugin uses a different version of the SDK (%s) that what is available in your system."), *SdkDllPath)
 		return false;
 	}
-
-	MakeAppServiceClient = (FN_MakeAppServiceClient)FPlatformProcess::GetDllExport(LibHandle, TEXT("MakeAppServiceClient"));
-	ShutdownClient = (FN_ShutdownClient)FPlatformProcess::GetDllExport(LibHandle, TEXT("ShutdownClient"));
-	
-	if (!MakeAppServiceClient || !ShutdownClient)
-	{
-		UE_LOG(LogNOSClient, Error, TEXT("Failed to load some of the functions in Nodos SDK. The plugin uses a different version of the SDK (%s) that what is available in your system."), *SdkDllPath)
-		return false;
-	}
-
 	return true;
 }
 
@@ -134,10 +137,9 @@ void FNodos::Shutdown()
 {
 	if (LibHandle)
 	{
+		Api = std::nullopt;
 		FPlatformProcess::FreeDllHandle(LibHandle);
 		LibHandle = nullptr;
-		MakeAppServiceClient = nullptr;
-		ShutdownClient = nullptr;
 		LOG("Unloaded Nodos SDK dll successfully.");
 	}
 }
@@ -533,7 +535,7 @@ void FNOSClient::TryConnect()
 		return;
 	}
 
-	if (!AppServiceClient && FNodos::MakeAppServiceClient)
+	if (!AppServiceClient && FNodos::Api)
 	{
 		auto ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 		auto ExePath = FString(FPlatformProcess::ExecutablePath());
@@ -541,11 +543,11 @@ void FNOSClient::TryConnect()
 			.AppKey = TCHAR_TO_UTF8(*FNOSClient::AppKey),
 			.AppName = "UE5"
 		};
-		AppServiceClient = new nos::app::AppServiceClient(FNodos::MakeAppServiceClient("localhost:50053", &appInfo));
+		AppServiceClient = nos::app::AppServiceClient::CreateClient(*FNodos::Api, "localhost:50053", appInfo);
 		EventDelegates = TSharedPtr<NOSEventDelegates>(new NOSEventDelegates());
 		EventDelegates->PluginClient = this;
 		UENodeStatusHandler.SetClient(this);
-		AppServiceClient->RegisterEventDelegates(&EventDelegates.Get()->Delegates);
+		AppServiceClient->SetEventDelegates(*EventDelegates);
 		LOG("AppClient instance is created");
 	}
 
@@ -685,12 +687,7 @@ void FNOSClient::ShutdownModule()
 {
 	// AppServiceClient-/*>*/
 	NOSTimeStep = nullptr;
-	if(FNodos::ShutdownClient)
-	{
-		FNodos::ShutdownClient(AppServiceClient->Client);
-	}
-	delete AppServiceClient;
-	AppServiceClient = nullptr;
+	AppServiceClient = std::nullopt;
 	FNodos::Shutdown();
 
 	if (GEditor)

@@ -216,8 +216,7 @@ public:
 	static FString GetNodosSDKDir();
 	static bool Initialize();
 	static void Shutdown();
-	static FN_MakeAppServiceClient MakeAppServiceClient;
-	static FN_ShutdownClient ShutdownClient;
+	static std::optional<nos::app::AppApi> Api;
 private:
 	// Nodos SDK DLL handle
 	static void* LibHandle;
@@ -322,7 +321,7 @@ public:
 	TSharedPtr<NOSEventDelegates> EventDelegates = 0;
 
 	//To send events to Nodos and communication
-	nos::app::AppServiceClient* AppServiceClient = nullptr;
+	std::optional<nos::app::AppServiceClient> AppServiceClient = std::nullopt;
 
 	//Task queue
 	TQueue<Task, EQueueMode::Mpsc> TaskQueue;

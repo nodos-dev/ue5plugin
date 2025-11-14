@@ -147,6 +147,7 @@ class NOSSCENETREEMANAGER_API NOSProperty : public TSharedFromThis<NOSProperty>
 {
 public:
 	NOSProperty(UObject* Container, FProperty* UProperty, FString ParentCategory = FString(), uint8 * StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr);
+	NOSProperty(FGuid Id, UObject* Container, FProperty* UProperty, FString ParentCategory = FString(), uint8 * StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr);
 
 	virtual void SetPropValue(void* val, size_t size, uint8* customContainer = nullptr);
 	UObject* GetRawObjectContainer();
@@ -433,7 +434,7 @@ public:
 class NOSObjectProperty : public NOSProperty
 {
 public:
-	NOSObjectProperty(UObject* container, FObjectProperty* uproperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr);
+	NOSObjectProperty(FGuid Id, UObject* container, FObjectProperty* uproperty, FString parentCategory = FString(), uint8* StructPtr = nullptr, NOSStructProperty* parentProperty = nullptr);
 	
 	FObjectProperty* objectprop;
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr) override;
