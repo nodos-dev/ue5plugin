@@ -511,7 +511,7 @@ void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptA
 		channel->UnPackTo(&Channel);
 
 		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_NAME))
-			LinoChannelData->Name = FName(Channel.name.c_str());
+			LinoChannelData->Name = FName(UTF8_TO_TCHAR(Channel.name.c_str()));
 
 		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
 			LinoChannelData->Size = FIntPoint(Channel.size.x(), Channel.size.y());
@@ -528,7 +528,7 @@ void NOSLinoChannelProperty::SetProperty_InCont(void* container, void* val)
 
    if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_NAME))
    {
-       LinoChannelData->Name = FName(channel->name()->c_str());
+       LinoChannelData->Name = FName(UTF8_TO_TCHAR(channel->name()->c_str()));
    }  
    if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
    {  
@@ -551,11 +551,15 @@ std::vector<uint8> NOSLinoChannelProperty::UpdatePinValue(uint8* customContainer
 
 	if (container)
 	{
-		FNOSLinoChannel ChannelData = *Property->ContainerPtrToValuePtr<FNOSLinoChannel>(container);
+		FNOSLinoChannel LinoChannelData = *Property->ContainerPtrToValuePtr<FNOSLinoChannel>(container);
 
 		flatbuffers::FlatBufferBuilder fb;
 		nos::sys::lino::TChannel TempChannel;
-		//TODO
+		TempChannel.name = std::string(TCHAR_TO_UTF8(*LinoChannelData.Name.ToString()));
+		TempChannel.size.mutate_x(LinoChannelData.Size.X);
+		TempChannel.size.mutate_y(LinoChannelData.Size.Y);
+		TempChannel.is_preview_channel = LinoChannelData.Preview;
+
 		auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
 		fb.Finish(offset);
 		nos::Buffer buffer = fb.Release();
