@@ -210,16 +210,7 @@ void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
 	for (auto const& [prop, texPropInfo] : TextureProperties)
 	{
 		// This will update stored nodos pin value and orphanness state, but wont send the pin value update
-		auto oldDestPtr = texPropInfo->ActiveDestinationSharedResource.Get();
 		prop->UpdatePinValue();
-		auto newDestPtr = texPropInfo->ActiveDestinationSharedResource.Get();
-		if (oldDestPtr != newDestPtr)
-		{
-			auto texRoot = flatbuffers::GetRoot<nos::sys::vulkan::Texture>(prop->data.data());
-			nos::sys::vulkan::TTexture tex;
-			texRoot->UnPackTo(&tex);
-			ImportResource(reinterpret_cast<nos::fb::UUID const&>(prop->Id), std::move(tex));
-		}
 	}
 }
 
@@ -300,6 +291,7 @@ std::optional<nos::sys::vulkan::TTexture> NOSTextureShareManager::GetUpdatedText
 		if (!hadDestinationResource)
 			changePinOrphanness(false);
 		(*texPropInfo)->ActiveDestinationSharedResource = std::move(newShareInfoAndTex->first);
+		ImportResource(reinterpret_cast<nos::fb::UUID const&>(NosProperty->Id), std::move(newShareInfoAndTex->second));
 		return newShareInfoAndTex->second;
 	}
 	changePinOrphanness(false);
