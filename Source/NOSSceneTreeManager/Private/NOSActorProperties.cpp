@@ -1349,7 +1349,9 @@ flatbuffers::Offset<nos::fb::Pin> NOSEnumProperty::Serialize(flatbuffers::FlatBu
 {
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	DisplayName = ValidateName(DisplayName);
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&(NOSProperty::Id), TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_ANSI(TEXT("string")), PinShowAs, PinCanShowAs, SerializeVisualizer(fbb), &data, 0, 0, 0, 0, 0, 0, ReadOnly, transient, &metadata, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*Property->GetDisplayNameText().ToString()));
+	auto visualizerOffset = SerializeVisualizer(fbb);
+	auto visualizers = std::vector{ visualizerOffset };
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&(NOSProperty::Id), TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_ANSI(TEXT("string")), PinShowAs, PinCanShowAs, &visualizers, &data, 0, 0, 0, 0, 0, 0, ReadOnly, transient, &metadata, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*Property->GetDisplayNameText().ToString()));
 }
 
 void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)

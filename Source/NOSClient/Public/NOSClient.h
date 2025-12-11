@@ -216,7 +216,7 @@ public:
 	static FString GetNodosSDKDir();
 	static bool Initialize();
 	static void Shutdown();
-	static std::optional<nos::app::AppApi> Api;
+	static std::shared_ptr<nos::app::AppApi> Api;
 private:
 	// Nodos SDK DLL handle
 	static void* LibHandle;

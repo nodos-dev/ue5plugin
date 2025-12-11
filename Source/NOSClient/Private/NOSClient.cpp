@@ -43,7 +43,7 @@ FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 
 void* FNodos::LibHandle = nullptr;
-std::optional<nos::app::AppApi> FNodos::Api = std::nullopt;
+std::shared_ptr<nos::app::AppApi> FNodos::Api = nullptr;
 
 FString FNodos::GetNodosSDKDir()
 {
@@ -110,7 +110,7 @@ bool FNodos::Initialize()
 	}
 
 	// Initialize Nodos SDK
-	struct DXAppProcLoader : nos::app::AppApiProcLoader
+	struct DXAppProcLoader : nos::app::IAppApiProcLoader
 	{
 		DXAppProcLoader(void* module) : ApiModule(module)
 		{
@@ -124,12 +124,13 @@ bool FNodos::Initialize()
 	};
 
 	std::shared_ptr<DXAppProcLoader> procLoader = std::make_shared<DXAppProcLoader>(LibHandle);
-	Api = nos::app::AppApi::Create(procLoader);
-	if (!Api)
+	auto res = nos::app::AppApi::Create(procLoader);
+	if (auto err = res.Error())
 	{
-		UE_LOG(LogNOSClient, Error, TEXT("Nodos SDK is incompatible with the plugin. The plugin uses a different version of the SDK (%s) that what is available in your system."), *SdkDllPath)
+		UE_LOG(LogNOSClient, Error, TEXT("Unable to load Nodos SDK at %s: %s"), *SdkDllPath, *FString(err->c_str()))
 		return false;
 	}
+	Api = std::make_shared<nos::app::AppApi>(std::move(*res));
 	return true;
 }
 
@@ -137,7 +138,7 @@ void FNodos::Shutdown()
 {
 	if (LibHandle)
 	{
-		Api = std::nullopt;
+		Api =  nullptr;
 		FPlatformProcess::FreeDllHandle(LibHandle);
 		LibHandle = nullptr;
 		LOG("Unloaded Nodos SDK dll successfully.");
@@ -525,7 +526,6 @@ void FNOSClient::Disconnected_GrpcThread()
 	{
 		OnNOSConnectionClosed.Broadcast();
 	});
-
 }
 
 void FNOSClient::TryConnect()
@@ -543,7 +543,13 @@ void FNOSClient::TryConnect()
 			.AppKey = TCHAR_TO_UTF8(*FNOSClient::AppKey),
 			.AppName = "UE5"
 		};
-		AppServiceClient = nos::app::AppServiceClient::CreateClient(*FNodos::Api, "localhost:50053", appInfo);
+		auto Result = nos::app::AppServiceClient::CreateClient(FNodos::Api, "localhost:50053", appInfo);
+		if (auto Err = Result.Error())
+		{
+			LOGF("Failed to create AppServiceClient: %s", *FString(Err->c_str()));
+			return;
+		}
+		AppServiceClient = std::move(*Result);
 		EventDelegates = TSharedPtr<NOSEventDelegates>(new NOSEventDelegates());
 		EventDelegates->PluginClient = this;
 		UENodeStatusHandler.SetClient(this);
