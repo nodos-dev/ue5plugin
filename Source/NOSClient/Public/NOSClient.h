@@ -54,7 +54,7 @@ struct ExecuteFrameNumberQueue
 		{
 			while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
 			{
-				AppendNewUpdates(SkippedPinValueUpdates, cur->PinValueUpdates);
+				AppendNewUpdates(SkippedPinValueUpdates, std::move(cur->PinValueUpdates));
 				PendingExecuteInfos.Pop();
 			}
 			PendingExecuteInfos.Empty();
@@ -66,7 +66,7 @@ struct ExecuteFrameNumberQueue
 		}
 	}
 private:
-	void AppendNewUpdates(PinValueUpdateMap& existingUpdates, PinValueUpdateMap& newUpdates)
+	void AppendNewUpdates(PinValueUpdateMap& existingUpdates, PinValueUpdateMap&& newUpdates)
 	{
 		for (auto& [pinId, buffer] : newUpdates)
 		{
@@ -84,25 +84,21 @@ private:
 		{
 			if (!SkippedPinValueUpdates.empty())
 			{
-				AppendNewUpdates(result.PinValueUpdates, SkippedPinValueUpdates);
-				SkippedPinValueUpdates.clear();
+				AppendNewUpdates(result.PinValueUpdates, std::move(SkippedPinValueUpdates));
+				SkippedPinValueUpdates = PinValueUpdateMap{};
 			}
 			while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
 			{
 				LiveNow = true;
 				dequeued = true;
-				if (cur->FrameNumber < requestedFrameNumber)
+				uint64_t curFrameNum = cur->FrameNumber;
+				if (curFrameNum <= requestedFrameNumber)
 				{
-					AppendNewUpdates(result.PinValueUpdates, cur->PinValueUpdates);
+					AppendNewUpdates(result.PinValueUpdates, std::move(cur->PinValueUpdates));
 					PendingExecuteInfos.Pop();
 				}
-				else
+				if (curFrameNum >= requestedFrameNumber)
 				{
-					if (cur->FrameNumber == requestedFrameNumber)
-					{
-						AppendNewUpdates(result.PinValueUpdates, cur->PinValueUpdates);
-						PendingExecuteInfos.Pop();
-					}
 					result.FrameNumber = requestedFrameNumber;
 					break;
 				}
