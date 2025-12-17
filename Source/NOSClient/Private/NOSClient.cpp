@@ -42,8 +42,12 @@ DEFINE_LOG_CATEGORY(LogNOSClient);
 FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 
-void* FNodos::LibHandle = nullptr;
-std::shared_ptr<nos::app::AppApi> FNodos::Api = nullptr;
+FNodos GNodos;
+
+nos::app::IAppApiProcLoader::ProcFuncPtr FNodos::GetProcAddress(const char* name) const
+{
+	return (ProcFuncPtr)FPlatformProcess::GetDllExport(LibHandle, UTF8_TO_TCHAR(name));
+}
 
 FString FNodos::GetNodosSDKDir()
 {
@@ -109,28 +113,13 @@ bool FNodos::Initialize()
 		return false;
 	}
 
-	// Initialize Nodos SDK
-	struct DXAppProcLoader : nos::app::IAppApiProcLoader
-	{
-		DXAppProcLoader(void* module) : ApiModule(module)
-		{
-		}
-
-		ProcFuncPtr GetProcAddress(const char* name) const override
-		{
-			return (ProcFuncPtr)FPlatformProcess::GetDllExport(ApiModule, UTF8_TO_TCHAR(name));
-		}
-		void* ApiModule;
-	};
-
-	std::shared_ptr<DXAppProcLoader> procLoader = std::make_shared<DXAppProcLoader>(LibHandle);
-	auto res = nos::app::AppApi::Create(procLoader);
+	auto res = nos::app::AppApi::Create(*this);
 	if (auto err = res.Error())
 	{
 		UE_LOG(LogNOSClient, Error, TEXT("Unable to load Nodos SDK at %s: %s"), *SdkDllPath, *FString(err->c_str()))
 		return false;
 	}
-	Api = std::make_shared<nos::app::AppApi>(std::move(*res));
+	Api = std::move(*res);
 	return true;
 }
 
@@ -535,7 +524,7 @@ void FNOSClient::TryConnect()
 		return;
 	}
 
-	if (!AppServiceClient && FNodos::Api)
+	if (!AppServiceClient && GNodos.Api)
 	{
 		auto ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 		auto ExePath = FString(FPlatformProcess::ExecutablePath());
@@ -543,7 +532,7 @@ void FNOSClient::TryConnect()
 			.AppKey = TCHAR_TO_UTF8(*FNOSClient::AppKey),
 			.AppName = "UE5"
 		};
-		auto Result = nos::app::AppServiceClient::CreateClient(FNodos::Api, "localhost:50053", appInfo);
+		auto Result = nos::app::AppServiceClient::CreateClient(GNodos.Api, "localhost:50053", appInfo);
 		if (auto Err = Result.Error())
 		{
 			LOGF("Failed to create AppServiceClient: %s", *FString(Err->c_str()));
@@ -681,7 +670,7 @@ void FNOSClient::StartupModule() {
 		return;
 	}
 
-	if (!FNodos::Initialize())
+	if (!GNodos.Initialize())
 	{
 		return;
 	}
@@ -693,8 +682,8 @@ void FNOSClient::ShutdownModule()
 {
 	// AppServiceClient-/*>*/
 	NOSTimeStep = nullptr;
-	AppServiceClient = std::nullopt;
-	FNodos::Shutdown();
+	AppServiceClient.reset();
+	GNodos.Shutdown();
 
 	if (GEditor)
 	{

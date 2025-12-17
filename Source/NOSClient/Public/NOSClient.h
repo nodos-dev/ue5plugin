@@ -210,17 +210,20 @@ private:
 	float FramesPerSecond = 0;
 };
 
-class NOSCLIENT_API FNodos
+class NOSCLIENT_API FNodos : public nos::app::IAppApiProcLoader
 {
 public:
-	static FString GetNodosSDKDir();
-	static bool Initialize();
-	static void Shutdown();
-	static std::shared_ptr<nos::app::AppApi> Api;
+	FString GetNodosSDKDir();
+	bool Initialize();
+	void Shutdown();
+	std::shared_ptr<nos::app::AppApi> Api;
+	ProcFuncPtr GetProcAddress(const char* name) const override;
 private:
 	// Nodos SDK DLL handle
-	static void* LibHandle;
+	void* LibHandle = nullptr;
 };
+
+extern FNodos GNodos;
 
 template <typename DelegateT>
 class Chain : public DelegateT
@@ -321,7 +324,7 @@ public:
 	TSharedPtr<NOSEventDelegates> EventDelegates = 0;
 
 	//To send events to Nodos and communication
-	std::optional<nos::app::AppServiceClient> AppServiceClient = std::nullopt;
+	std::unique_ptr<nos::app::AppServiceClient> AppServiceClient = nullptr;
 
 	//Task queue
 	TQueue<Task, EQueueMode::Mpsc> TaskQueue;

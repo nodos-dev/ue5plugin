@@ -3602,7 +3602,7 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 	}
 	flatbuffers::FlatBufferBuilder mb;
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins = { SerializePortal(mb, NewPortal, NOSProperty.Get()) };
-	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, &graphPins, 0, 0, 0, 0);
+	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, &graphPins);
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
@@ -3699,7 +3699,9 @@ flatbuffers::Offset<nos::fb::Pin> FNOSPropertyManager::SerializePortal(flatbuffe
 {
 	auto SerializedMetadata = SourceProperty->SerializeMetaData(fbb);
 	auto visualizerOffset = SourceProperty->SerializeVisualizer(fbb);
-	std::vector visualizers = { visualizerOffset };
+	std::vector<decltype(visualizerOffset)> visualizers;
+	if (visualizerOffset.o)
+		visualizers.push_back(visualizerOffset);
 	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.UniqueName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, SourceProperty->PinCanShowAs, &visualizers, &SourceProperty->data, 0, 0, 0, 0, 0, 0, SourceProperty->ReadOnly, false, &SerializedMetadata, 0, nos::fb::PinContents::PortalPin, nos::fb::CreatePortalPin(fbb, (nos::fb::UUID*)&Portal.SourceId).Union(), 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
 }
 
