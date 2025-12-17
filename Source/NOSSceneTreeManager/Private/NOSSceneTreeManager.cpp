@@ -1851,7 +1851,12 @@ void FNOSSceneTreeManager::SetPropertyValue(FGuid pinId, void* newval, size_t si
 	{
 		return;
 	}
-	if (!NOSPropertyManager.PropertyToPortalPin.Contains(pinId))
+	bool bufferChanged = false;
+	if (nosprop->data.size() != size)
+		bufferChanged = true;
+	else if (memcmp(nosprop->data.data(), newval, size) != 0)
+		bufferChanged = true;
+	if (!NOSPropertyManager.PropertyToPortalPin.Contains(pinId) && bufferChanged)
 	{
 		NOSPropertyManager.CreatePortal(pinId, nos::fb::ShowAs::PROPERTY);
 	}	
