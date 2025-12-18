@@ -1,7 +1,7 @@
 // Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
 #include "NOSActorProperties.h"
-#include "NOSTextureShareManager.h"
+#include "NOSResourceShareManager.h"
 #include "EditorCategoryUtils.h"
 #include "ObjectEditorUtils.h"
 #include "NOSTrack.h"
@@ -998,12 +998,12 @@ bool PropertyVisible(FProperty* ueproperty);
 NOSObjectProperty::NOSObjectProperty(FGuid Id, UObject* container, FObjectProperty* uproperty, FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
 	: NOSProperty(Id, container, uproperty, parentCategory, StructPtr, parentProperty), objectprop(uproperty)
 {
-	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
+	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()
+		|| objectprop->PropertyClass->IsChildOf<UNOSGPUBuffer>())
 	{
-		TypeName = "nos.sys.vulkan.Texture";
+		TypeName = objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>() ? "nos.sys.vulkan.Texture" : "nos.sys.vulkan.Buffer";
 		ReadOnly = true;
-		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(this);
-		data = nos::Buffer::From(tex);
+		data = NOSResourceShareManager::GetInstance()->AddResourcePin(this);
 	}
 	else if (objectprop->PropertyClass->IsChildOf<UUserWidget>())
 	{
@@ -1127,14 +1127,9 @@ std::vector<uint8> NOSObjectProperty::UpdatePinValue(uint8* customContainer)
 
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
 	{
-		if (auto updatedTexValue = NOSTextureShareManager::GetInstance()->GetUpdatedTexturePinValue(this))
+		if (auto updatedResourceValue = NOSResourceShareManager::GetInstance()->GetUpdatedResourcePinValue(this))
 		{
-			// data = nos::Buffer::From(texture);
-			flatbuffers::FlatBufferBuilder fb;
-			auto offset = nos::sys::vulkan::CreateTexture(fb, &*updatedTexValue);
-			fb.Finish(offset);
-			nos::Buffer buffer = fb.Release();
-			data = buffer;
+			data = *updatedResourceValue;
 		}
 	}
 

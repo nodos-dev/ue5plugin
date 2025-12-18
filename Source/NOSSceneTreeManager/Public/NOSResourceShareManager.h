@@ -22,6 +22,7 @@ void MemoryBarrier();
 #include <nosFlatBuffersCommon.h>
 #include "NOSClient.h"
 #include "RHI.h"
+#include "NOSGPUBuffer.h"
 
 #include "nosVulkanSubsystem/Types_generated.h"
 
@@ -69,17 +70,18 @@ struct SharedResourceInfo
 	SharedResourceInfo& operator=(SharedResourceInfo&&) = delete;
 	~SharedResourceInfo();
 	UPROPERTY()
-	TObjectPtr<UTextureRenderTarget2D> DstResource = 0;
+	TObjectPtr<UTextureRenderTarget2D> DstTexture = 0;
+	TObjectPtr<UNOSGPUBuffer> DstBuffer = 0;
 	HANDLE SharedHandle = 0;
 };
 
-struct TexturePropertyInfo
+struct ResourcePropertyInfo
 {
-	TexturePropertyInfo(nos::fb::ShowAs InShowAs) : ShowAs(InShowAs) {}
-	TexturePropertyInfo(const TexturePropertyInfo&) = delete;
-	TexturePropertyInfo(TexturePropertyInfo&&) = delete;
-	TexturePropertyInfo& operator=(const TexturePropertyInfo&) = delete;
-	TexturePropertyInfo& operator=(TexturePropertyInfo&&) = delete;
+	ResourcePropertyInfo(nos::fb::ShowAs InShowAs) : ShowAs(InShowAs) {}
+	ResourcePropertyInfo(const ResourcePropertyInfo&) = delete;
+	ResourcePropertyInfo(ResourcePropertyInfo&&) = delete;
+	ResourcePropertyInfo& operator=(const ResourcePropertyInfo&) = delete;
+	ResourcePropertyInfo& operator=(ResourcePropertyInfo&&) = delete;
 	nos::fb::ShowAs ShowAs = nos::fb::ShowAs::NONE;
 	UPROPERTY()
 	/// This might be null, so check before use
@@ -87,33 +89,33 @@ struct TexturePropertyInfo
 };
 
 //This class manages copy operations between textures of Nodos and unreal 2d texture target
-class NOSSCENETREEMANAGER_API NOSTextureShareManager
+class NOSSCENETREEMANAGER_API NOSResourceShareManager
 {
 //protected:
 public:
-	NOSTextureShareManager();
-	static NOSTextureShareManager* singleton;
+	NOSResourceShareManager();
+	static NOSResourceShareManager* singleton;
 
-	static NOSTextureShareManager* GetInstance();
+	static NOSResourceShareManager* GetInstance();
 
-	~NOSTextureShareManager();
+	~NOSResourceShareManager();
 	
-	nos::sys::vulkan::TTexture AddTexturePin(NOSProperty*);
-	void UpdateTexturePin(NOSProperty*, nos::fb::ShowAs);
+	nos::Buffer AddResourcePin(NOSProperty*);
+	void UpdateResourcePin(NOSProperty*, nos::fb::ShowAs);
 	
 	/// Checks properties RT against current SharedResource destination, updates the destination if needed and returns the new destination texture value
 	/// Returns nullopt if no change was needed
-	std::optional<nos::sys::vulkan::TTexture> GetUpdatedTexturePinValue(NOSProperty* NosProperty);
+	std::optional<nos::Buffer> GetUpdatedResourcePinValue(NOSProperty* NosProperty);
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
-	void TextureDestroyed(NOSProperty* texture);
+	void ResourceDestroyed(NOSProperty* texture);
 	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
 	void ProcessCopies(nos::fb::ShowAs);
 	void OnBeginFrame();
 	void OnEndFrame();
 	bool SwitchStateToSynced();
 	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
-	void ImportResource(nos::fb::UUID const& pinId, nos::sys::vulkan::TTexture tex);
+	void ImportResource(nos::fb::UUID const& pinId, std::variant<nos::sys::vulkan::TTexture, nos::sys::vulkan::Buffer> res);
 
 	class FNOSClient* NOSClient;
 	
@@ -141,12 +143,12 @@ private:
 	TQueue<TPair<TSharedPtr<SharedResourceInfo>, uint32_t>> ResourcesToDelete;
 	UPROPERTY()
 	/// All texture property values are checked against the current SharedResource destination each frame, so we must keep them
-	TMap<NOSProperty*, TSharedPtr<TexturePropertyInfo>> TextureProperties;
+	TMap<NOSProperty*, TSharedPtr<ResourcePropertyInfo>> ResourceProperties;
 
 	/// This compares the current SharedResource destination against the property's current render target(UE side)
 	/// If there is a difference, it creates a new SharedResource and deletes the old one
 	/// Also updates the nodos pin value and orphanness state
-	void CheckAndUpdateTexturePinValues();
+	void CheckAndUpdateResourcePinValues();
 
 	void Initiate();
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;
