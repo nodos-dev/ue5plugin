@@ -184,7 +184,7 @@ std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::Buffer>> CreateDest
 	check(SharedBuffer);
 
 	// Initialize the buffer on the render thread
-	SharedBuffer->AllocateBlocking(SourceBuffer.GetBufferSize(), *DstName, BUF_UnorderedAccess | BUF_ShaderResource | BUF_Shared);
+	SharedBuffer->AllocateBlocking(SourceBuffer.GetBufferSize(), *DstName, SourceBuffer.GetUnderlyingBuffer()->GetUsage() | BUF_Shared);
 
 	// Get the D3D12 resource from the RHI buffer
 	FRHIBuffer* RHIBuffer = SharedBuffer->GetUnderlyingBuffer();
@@ -203,6 +203,12 @@ std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::Buffer>> CreateDest
 	// Set up the Vulkan buffer structure
 	Buffer.mutate_size_in_bytes(RHIBuffer->GetSize());
 	Buffer.mutate_usage(nos::sys::vulkan::BufferUsage(NOS_BUFFER_USAGE_TRANSFER_DST | NOS_BUFFER_USAGE_TRANSFER_SRC | NOS_BUFFER_USAGE_STORAGE_BUFFER));
+	nosMemoryFlags MemoryFlags = NOS_MEMORY_FLAGS_DEVICE_MEMORY;
+	if (int(SharedBuffer->GetUnderlyingBuffer()->GetUsage()) & int(BUF_KeepCPUAccessible))
+	{
+		reinterpret_cast<int&>(MemoryFlags) |= NOS_MEMORY_FLAGS_HOST_VISIBLE;
+	}
+	Buffer.mutate_memory_flags((nos::sys::vulkan::MemoryFlags)MemoryFlags);
 	auto& Ext = Buffer.mutable_external_memory();
 	Ext.mutate_handle_type(NOS_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE);
 	Ext.mutate_handle((uint64_t)SharedHandle);
