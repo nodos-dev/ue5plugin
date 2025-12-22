@@ -775,6 +775,10 @@ flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBuffer
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	auto displayName = Property->GetDisplayNameText().ToString();
 	DisplayName = ValidateName(DisplayName);
+	if (auto result = nosMetaDataMap.Find("PropertyDisplayName"))
+	{
+		displayName = *result;
+	}
 	if (TypeName == nos::Generic::GetFullyQualifiedName() || TypeName.size() < 1)
 	{
 		ensureMsgf(false, TEXT("Property %s cannot be serialized!"), *PropertyName);
