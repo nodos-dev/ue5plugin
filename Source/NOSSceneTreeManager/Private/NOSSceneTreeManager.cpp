@@ -25,7 +25,7 @@
 #include "Engine/Blueprint.h"
 #include "Blueprint/UserWidget.h"
 #include "Nodos/UUID.hpp"
-#include "nosVulkanSubsystem/ResourceShare_generated.h"
+#include "nosSysVulkan/ResourceShare_generated.h"
 
 DEFINE_LOG_CATEGORY(LogNOSSceneTreeManager);
 #define LOG(x) UE_LOG(LogNOSSceneTreeManager, Display, TEXT(x))

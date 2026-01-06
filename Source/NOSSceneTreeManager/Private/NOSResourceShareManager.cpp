@@ -27,8 +27,8 @@
 
 #include "NOSGPUFailSafe.h"
 
-#include "nosVulkanSubsystem/nosVulkanSubsystem.h"
-#include "nosVulkanSubsystem/ResourceShare_generated.h"
+#include "nosSysVulkan/nosVulkanSubsystem.h"
+#include "nosSysVulkan/ResourceShare_generated.h"
 
 #include "ID3D12DynamicRHI.h"
 

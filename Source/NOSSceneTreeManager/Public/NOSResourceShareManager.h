@@ -24,7 +24,7 @@ void MemoryBarrier();
 #include "RHI.h"
 #include "NOSGPUBuffer.h"
 
-#include "nosVulkanSubsystem/Types_generated.h"
+#include "nosSysVulkan/Types_generated.h"
 
 #define NOS_D3D12_ASSERT_SUCCESS(expr)                                                               \
     {                                                                                               \
