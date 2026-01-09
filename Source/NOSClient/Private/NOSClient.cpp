@@ -827,7 +827,22 @@ void FNOSClient::OnUpdatedNodeExecuted(nos::fb::vec2u deltaSeconds)
 {
 	if (NOSTimeStep.IsValid())
 	{
-		NOSTimeStep->Step(deltaSeconds);
+		bool isFreeRunDeltaSeconds = deltaSeconds.x() == 0 || deltaSeconds.y() == 0;
+		if (CustomTimeStepBound)
+		{
+			if (isFreeRunDeltaSeconds)
+			{
+				GEngine->SetCustomTimeStep(nullptr);
+				CustomTimeStepBound = false;
+			}
+			else
+				NOSTimeStep->Step(deltaSeconds);
+		}
+		else if(!isFreeRunDeltaSeconds)
+		{
+			if(GEngine->SetCustomTimeStep(NOSTimeStep.Get()))
+				CustomTimeStepBound = true;
+		}
 	}
 }
 
