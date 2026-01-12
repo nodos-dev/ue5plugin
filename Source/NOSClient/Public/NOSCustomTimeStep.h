@@ -26,25 +26,28 @@ public:
 	/** This CustomTimeStep became the Engine's CustomTimeStep. */
 	bool Initialize(class UEngine* InEngine) override
 	{
+		SetDeltaSeconds(CustomDeltaTime);
 		return true;
 	}
 
 	/** This CustomTimeStep stop being the Engine's CustomTimeStep. */
 	void Shutdown(class UEngine* InEngine) override
 	{
-
+		FApp::SetUseFixedTimeStep(false);
 	}
 
-	void Step(nos::fb::vec2u deltaSeconds)
+	void SetDeltaSeconds(nos::fb::vec2u deltaSeconds)
 	{
-		std::unique_lock lock(Mutex);
-		if(deltaSeconds.x() != 0)
+		CustomDeltaTime = deltaSeconds;
+		if (CustomDeltaTime.x() == 0 || CustomDeltaTime.y() == 0)
 		{
-			CustomDeltaTime = deltaSeconds.x() / (double)deltaSeconds.y();
+			FApp::SetUseFixedTimeStep(false);
 		}
-		IsReadyForNextStep = true;
-		lock.unlock();
-		CV.notify_one();
+		else
+		{
+			FApp::SetUseFixedTimeStep(true);
+			FApp::SetFixedDeltaTime(static_cast<double>(CustomDeltaTime.x()) / static_cast<double>(CustomDeltaTime.y()));
+		}
 	}
 
 	/**
@@ -53,53 +56,21 @@ public:
 	 */
 	bool UpdateTimeStep(class UEngine* InEngine) override
 	{
-		// UpdateApplicationLastTime();
-		if (FMath::IsNearlyZero(FApp::GetLastTime()))
-		{
-			FApp::SetCurrentTime(FPlatformTime::Seconds() - 0.0001);
-		}
-		FApp::SetCurrentTime(FApp::GetLastTime() + CustomDeltaTime);
-		FApp::UpdateLastTime();
-		FApp::SetDeltaTime(CustomDeltaTime);	
-		if (PluginClient && PluginClient->IsConnected() /*&& IsGameRunning()*/)
-		{
-			// std::unique_lock lock(Mutex);
-			// CV.wait(lock, [this] { return IsReadyForNextStep; });
-			IsReadyForNextStep = false;
-			return false;
-		}
-		else
-		{
-			return true;
-		}
+		// Fixed time step will handle time update automatically
+		return true;
 	}
 
 	/** The state of the CustomTimeStep. */
 	ECustomTimeStepSynchronizationState GetSynchronizationState() const override
 	{
-		if (PluginClient && PluginClient->IsConnected())
-		{
-			return ECustomTimeStepSynchronizationState::Synchronized;
-		}
-		else
-		{
-			return ECustomTimeStepSynchronizationState::Closed;
-		}
+		return ECustomTimeStepSynchronizationState::Synchronized;
 	}
 
 	class FNOSClient* PluginClient = nullptr;
 
 
 private:
-	bool IsGameRunning()
-	{
 
-			return (GEditor && GEditor->IsPlaySessionInProgress());
-	}
-
-	std::mutex Mutex;
-	std::condition_variable CV;
-	bool IsReadyForNextStep = false;
-	double CustomDeltaTime = 1. / 50.;
+	nos::fb::vec2u CustomDeltaTime{};
 };
 
