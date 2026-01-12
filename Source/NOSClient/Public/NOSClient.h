@@ -285,6 +285,7 @@ public:
 	//This function is called when the connection with the Nodos Engine is started
 	void Connected_GrpcThread();
 
+	void OnStateChanged_GrpcThread(nos::app::ExecutionState newState);
 	void NodeImported_GrpcThread(const nos::fb::Node& node);
 	void NodeRemoved_GrpcThread();
 
@@ -329,9 +330,7 @@ public:
 	TQueue<Task, EQueueMode::Mpsc> TaskQueue;
 
 	//Custom time step implementation for Nodos controlling the unreal editor in play mode
-	UPROPERTY()
-	TWeakObjectPtr<UNOSCustomTimeStep> NOSTimeStep = nullptr;
-	bool CustomTimeStepBound = false;
+	TObjectPtr<UNOSCustomTimeStep> NOSTimeStep = nullptr;
 
 	// Nodos root node id
 	static FGuid NodeId;

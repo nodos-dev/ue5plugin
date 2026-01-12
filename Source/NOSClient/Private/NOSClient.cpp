@@ -283,13 +283,7 @@ void NOSEventDelegates::OnStateChanged(nos::app::ExecutionState newState)
 		return;
 	}
 
-	PluginClient->OnNOSStateChanged_GRPCThread.Broadcast(newState);
-
-	//PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, newState]()
-	//	{
-	//		NOSClient->OnNOSStateChanged.Broadcast(newState);
-	//	});
-	
+	PluginClient->OnStateChanged_GrpcThread(newState);
 }
 
 void NOSEventDelegates::OnConsoleCommand(nos::app::ConsoleCommand const* consoleCommand)
@@ -444,7 +438,13 @@ void NOSEventDelegates::OnExecuteAppInfo(nos::app::AppExecuteInfo const* appExec
 		return;
 	}
 	
-	PluginClient->OnUpdatedNodeExecuted(*appExecuteInfo->delta_seconds());
+	nos::app::TAppExecuteInfo copy;
+	appExecuteInfo->UnPackTo(&copy);
+
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy = std::move(copy)]()
+		{
+			NOSClient->OnUpdatedNodeExecuted(copy.delta_seconds);
+		});
 }
 
 void NOSEventDelegates::OnNodeSelected(nos::fb::UUID const& nodeId)
@@ -536,6 +536,23 @@ void FNOSClient::Connected_GrpcThread()
 		});
 }
 
+void FNOSClient::OnStateChanged_GrpcThread(nos::app::ExecutionState newState)
+{
+	OnNOSStateChanged_GRPCThread.Broadcast(newState);
+
+	TaskQueue.Enqueue([this, newState]()
+		{
+			if (newState == nos::app::ExecutionState::SYNCED && NOSTimeStep)
+			{
+				GEngine->SetCustomTimeStep(NOSTimeStep.Get());
+			}
+			else
+			{
+				GEngine->SetCustomTimeStep(nullptr);
+			}
+		});
+}
+
 void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 {
 	ensureMsgf(!NodePresent_GrpcThread, TEXT("Node is already present on import from Nodos!"));
@@ -545,15 +562,8 @@ void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 	TaskQueue.Enqueue([this, copy = std::move(copy)]()
 		{
 			FNOSClient::NodeId = *(FGuid*)&copy.id;
-			if (!CustomTimeStepBound)
-			{
-				NOSTimeStep = NewObject<UNOSCustomTimeStep>();
-				NOSTimeStep->PluginClient = this;
-				if (GEngine->SetCustomTimeStep(NOSTimeStep.Get()))
-				{
-					CustomTimeStepBound = true;
-				}
-			}
+			NOSTimeStep = NewObject<UNOSCustomTimeStep>();
+			NOSTimeStep->AddToRoot();
 			flatbuffers::FlatBufferBuilder fbb;
 			auto offset = nos::fb::CreateNode(fbb, &copy);
 			fbb.Finish(offset);
@@ -576,20 +586,22 @@ void FNOSClient::NodeRemoved_GrpcThread()
 {
 	ensureMsgf(NodePresent_GrpcThread, TEXT("Node is not present on remove from Nodos!"));
 
+	if(NodePresent_GrpcThread)
+		OnStateChanged_GrpcThread(nos::app::ExecutionState::IDLE);
 	NodePresent_GrpcThread = false;
 	TaskQueue.Enqueue([this]()
 	{
 		OnNOSPreNodeRemoved.Broadcast();
 		FNOSClient::NodeId = {};
 		OnNOSNodeRemoved.Broadcast();
-		if(NOSTimeStep.IsValid())
+		if(NOSTimeStep)
 		{
-			if (CustomTimeStepBound && GEngine->GetCustomTimeStep() == NOSTimeStep.Get())
+			if (GEngine->GetCustomTimeStep() == NOSTimeStep.Get())
 			{
 				GEngine->SetCustomTimeStep(nullptr);
 			}
+			NOSTimeStep->RemoveFromRoot();
 			NOSTimeStep = nullptr;
-			CustomTimeStepBound = false;
 		}
 	});
 
@@ -765,7 +777,11 @@ void FNOSClient::StartupModule() {
 void FNOSClient::ShutdownModule()
 {
 	// AppServiceClient-/*>*/
-	NOSTimeStep = nullptr;
+	if (NOSTimeStep)
+	{
+		NOSTimeStep->RemoveFromRoot();
+		NOSTimeStep = nullptr;
+	}
 	if(FNodos::ShutdownClient)
 	{
 		FNodos::ShutdownClient(AppServiceClient);
@@ -825,9 +841,9 @@ bool FNOSClient::Tick(float dt)
 
 void FNOSClient::OnUpdatedNodeExecuted(nos::fb::vec2u deltaSeconds)
 {
-	if (NOSTimeStep.IsValid())
+	if (NOSTimeStep)
 	{
-		NOSTimeStep->Step(deltaSeconds);
+		NOSTimeStep->SetDeltaSeconds(deltaSeconds);
 	}
 }
 
