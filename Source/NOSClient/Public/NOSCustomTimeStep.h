@@ -26,28 +26,17 @@ public:
 	/** This CustomTimeStep became the Engine's CustomTimeStep. */
 	bool Initialize(class UEngine* InEngine) override
 	{
-		SetDeltaSeconds(CustomDeltaTime);
 		return true;
 	}
 
 	/** This CustomTimeStep stop being the Engine's CustomTimeStep. */
 	void Shutdown(class UEngine* InEngine) override
 	{
-		FApp::SetUseFixedTimeStep(false);
 	}
 
 	void SetDeltaSeconds(nos::fb::vec2u deltaSeconds)
 	{
 		CustomDeltaTime = deltaSeconds;
-		if (CustomDeltaTime.x() == 0 || CustomDeltaTime.y() == 0)
-		{
-			FApp::SetUseFixedTimeStep(false);
-		}
-		else
-		{
-			FApp::SetUseFixedTimeStep(true);
-			FApp::SetFixedDeltaTime(static_cast<double>(CustomDeltaTime.x()) / static_cast<double>(CustomDeltaTime.y()));
-		}
 	}
 
 	/**
@@ -56,8 +45,22 @@ public:
 	 */
 	bool UpdateTimeStep(class UEngine* InEngine) override
 	{
-		// Fixed time step will handle time update automatically
-		return true;
+		if (CustomDeltaTime.x() == 0 && CustomDeltaTime.y() == 0)
+		{
+			return true;
+		}
+		else
+		{
+			double deltaTimeInSeconds = static_cast<double>(CustomDeltaTime.x()) / static_cast<double>(CustomDeltaTime.y());
+			if (FMath::IsNearlyZero(FApp::GetLastTime()))
+			{
+				FApp::SetCurrentTime(FPlatformTime::Seconds() - 0.0001);
+			}
+			FApp::SetCurrentTime(FApp::GetLastTime() + deltaTimeInSeconds);
+			FApp::UpdateLastTime();
+			FApp::SetDeltaTime(deltaTimeInSeconds);
+			return false;
+		}
 	}
 
 	/** The state of the CustomTimeStep. */
