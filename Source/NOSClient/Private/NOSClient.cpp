@@ -438,9 +438,12 @@ void NOSEventDelegates::OnExecuteAppInfo(nos::app::AppExecuteInfo const* appExec
 		return;
 	}
 	
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, appExecuteInfo]()
+	nos::app::TAppExecuteInfo copy;
+	appExecuteInfo->UnPackTo(&copy);
+
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, copy = std::move(copy)]()
 		{
-			NOSClient->OnUpdatedNodeExecuted(*appExecuteInfo->delta_seconds());
+			NOSClient->OnUpdatedNodeExecuted(copy.delta_seconds);
 		});
 }
 
@@ -539,7 +542,7 @@ void FNOSClient::OnStateChanged_GrpcThread(nos::app::ExecutionState newState)
 
 	TaskQueue.Enqueue([this, newState]()
 		{
-			if (newState == nos::app::ExecutionState::SYNCED && NOSTimeStep.IsValid())
+			if (newState == nos::app::ExecutionState::SYNCED && NOSTimeStep)
 			{
 				GEngine->SetCustomTimeStep(NOSTimeStep.Get());
 			}
@@ -561,6 +564,7 @@ void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 			FNOSClient::NodeId = *(FGuid*)&copy.id;
 			NOSTimeStep = NewObject<UNOSCustomTimeStep>();
 			NOSTimeStep->PluginClient = this;
+			NOSTimeStep->AddToRoot();
 			flatbuffers::FlatBufferBuilder fbb;
 			auto offset = nos::fb::CreateNode(fbb, &copy);
 			fbb.Finish(offset);
@@ -591,12 +595,13 @@ void FNOSClient::NodeRemoved_GrpcThread()
 		OnNOSPreNodeRemoved.Broadcast();
 		FNOSClient::NodeId = {};
 		OnNOSNodeRemoved.Broadcast();
-		if(NOSTimeStep.IsValid())
+		if(NOSTimeStep)
 		{
 			if (GEngine->GetCustomTimeStep() == NOSTimeStep.Get())
 			{
 				GEngine->SetCustomTimeStep(nullptr);
 			}
+			NOSTimeStep->RemoveFromRoot();
 			NOSTimeStep = nullptr;
 		}
 	});
@@ -773,7 +778,11 @@ void FNOSClient::StartupModule() {
 void FNOSClient::ShutdownModule()
 {
 	// AppServiceClient-/*>*/
-	NOSTimeStep = nullptr;
+	if (NOSTimeStep)
+	{
+		NOSTimeStep->RemoveFromRoot();
+		NOSTimeStep = nullptr;
+	}
 	if(FNodos::ShutdownClient)
 	{
 		FNodos::ShutdownClient(AppServiceClient);
@@ -833,7 +842,7 @@ bool FNOSClient::Tick(float dt)
 
 void FNOSClient::OnUpdatedNodeExecuted(nos::fb::vec2u deltaSeconds)
 {
-	if (NOSTimeStep.IsValid())
+	if (NOSTimeStep)
 	{
 		NOSTimeStep->SetDeltaSeconds(deltaSeconds);
 	}

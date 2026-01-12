@@ -330,8 +330,7 @@ public:
 	TQueue<Task, EQueueMode::Mpsc> TaskQueue;
 
 	//Custom time step implementation for Nodos controlling the unreal editor in play mode
-	UPROPERTY()
-	TWeakObjectPtr<UNOSCustomTimeStep> NOSTimeStep = nullptr;
+	TObjectPtr<UNOSCustomTimeStep> NOSTimeStep = nullptr;
 
 	// Nodos root node id
 	static FGuid NodeId;
