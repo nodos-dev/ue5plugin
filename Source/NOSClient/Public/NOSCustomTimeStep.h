@@ -36,7 +36,22 @@ public:
 
 	void SetDeltaSeconds(nos::fb::vec2u deltaSeconds)
 	{
-		CustomDeltaTime = deltaSeconds;
+		NodosDeltaTime = deltaSeconds;
+	}
+
+	FString GetDisplayName() const override
+	{
+		FString frameRateString;
+		if (NodosDeltaTime.y() != 0 && NodosDeltaTime.x() != 0)
+		{
+			double frameRate = static_cast<double>(NodosDeltaTime.y()) / static_cast<double>(NodosDeltaTime.x());
+			frameRateString = FString::Printf(TEXT("Fixed Frame Rate: %.2f FPS"), frameRate);
+		}
+		else
+		{
+			frameRateString = TEXT("Free run");
+		}
+		return TEXT("Nodos - ") + frameRateString;
 	}
 
 	/**
@@ -45,13 +60,13 @@ public:
 	 */
 	bool UpdateTimeStep(class UEngine* InEngine) override
 	{
-		if (CustomDeltaTime.x() == 0 && CustomDeltaTime.y() == 0)
+		if (NodosDeltaTime.x() == 0 && NodosDeltaTime.y() == 0)
 		{
 			return true;
 		}
 		else
 		{
-			double deltaTimeInSeconds = static_cast<double>(CustomDeltaTime.x()) / static_cast<double>(CustomDeltaTime.y());
+			double deltaTimeInSeconds = static_cast<double>(NodosDeltaTime.x()) / static_cast<double>(NodosDeltaTime.y());
 			if (FMath::IsNearlyZero(FApp::GetLastTime()))
 			{
 				FApp::SetCurrentTime(FPlatformTime::Seconds() - 0.0001);
@@ -74,6 +89,6 @@ public:
 
 private:
 
-	nos::fb::vec2u CustomDeltaTime{};
+	nos::fb::vec2u NodosDeltaTime{};
 };
 
