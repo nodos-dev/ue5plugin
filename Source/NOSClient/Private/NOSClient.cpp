@@ -563,7 +563,6 @@ void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 		{
 			FNOSClient::NodeId = *(FGuid*)&copy.id;
 			NOSTimeStep = NewObject<UNOSCustomTimeStep>();
-			NOSTimeStep->PluginClient = this;
 			NOSTimeStep->AddToRoot();
 			flatbuffers::FlatBufferBuilder fbb;
 			auto offset = nos::fb::CreateNode(fbb, &copy);

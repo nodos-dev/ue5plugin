@@ -84,9 +84,6 @@ public:
 		return ECustomTimeStepSynchronizationState::Synchronized;
 	}
 
-	class FNOSClient* PluginClient = nullptr;
-
-
 private:
 
 	nos::fb::vec2u NodosDeltaTime{};
