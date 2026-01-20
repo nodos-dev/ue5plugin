@@ -22,16 +22,13 @@
 #include "AppEvents_generated.h"
 #include <nosFlatBuffersCommon.h>
 #include <functional> 
-#include <Nodos/AppHelpers.hpp>
-
-using PinValueUpdateMap = std::unordered_map<nos::uuid, nos::Buffer>;
 
 struct ExecuteInfo
 {
 	uint64_t FrameNumber;
-	PinValueUpdateMap PinValueUpdates;
+	TArray<TPair<uuids::uuid, nos::Buffer>> PinValueUpdates;
 };
-struct ExecuteFrameNumberQueue
+struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 {
 	ExecuteInfo PopFrameNumber(uint64_t frameNumber, float maxWaitTime)
 	{
@@ -47,74 +44,43 @@ struct ExecuteFrameNumberQueue
 			for (auto const& pinValueUpdate : *pinValueUpdates)
 			{
 				uuids::uuid pinId(pinValueUpdate->pin_id()->bytes()->begin(), pinValueUpdate->pin_id()->bytes()->end());
-				start.PinValueUpdates.insert_or_assign(pinId, nos::Buffer(pinValueUpdate->value()->data(), pinValueUpdate->value()->size()));
+				start.PinValueUpdates.Emplace(pinId, nos::Buffer(pinValueUpdate->value()->data(), pinValueUpdate->value()->size()));
 			}
-		std::unique_lock lock(ExecutionGuard);
 		if (appExecuteStart->reset())
 		{
-			while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
-			{
-				AppendNewUpdates(SkippedPinValueUpdates, std::move(cur->PinValueUpdates));
-				PendingExecuteInfos.Pop();
-			}
-			PendingExecuteInfos.Empty();
+			std::scoped_lock lock(Guard);
+			Empty();
 		}
 		else
-		{
-			PendingExecuteInfos.Enqueue(std::move(start));
-			ExecutionCV.notify_one();
-		}
+			Enqueue(std::move(start));
 	}
 private:
-	void AppendNewUpdates(PinValueUpdateMap& existingUpdates, PinValueUpdateMap&& newUpdates)
-	{
-		for (auto& [pinId, buffer] : newUpdates)
-		{
-			existingUpdates[pinId] = std::move(buffer);
-		}
-	}
-	/// Dequeues ExecuteInfo entries until the requestedFrameNumber is reached,
-	/// appending any PinValueUpdates from from discarded or skipped entries to result.PinValueUpdates.
-	/// Even if result does not reach the requestedFrameNumber, its pin value updates should be handled.
-	/// Internally, this method will retry dequeuing up to retryCount times, waiting maxWaitTime / retryCount seconds between tries,
-	/// if wait is true.
-	/// TODO: Rewrite this function to handle execution state changes and avoid waiting like this. Condition variable waits should be driven by state changes, not timeouts.
-	/// Also, frame numbers start from 0, but this code assumes they start from 1 and doesn't wait for frame 0 correctly.
 	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait, float maxWaitTime)
 	{
-		std::unique_lock lock(ExecutionGuard);
+		std::scoped_lock lock(Guard);
 		uint32_t tryCount = 0;
 		bool dequeued = false;
 		bool oldLiveNow = LiveNow;
 		constexpr int retryCount = 20;
-		while (true)
-		{
-			if (!SkippedPinValueUpdates.empty())
+		FPlatformProcess::ConditionalSleep([&]()
 			{
-				AppendNewUpdates(result.PinValueUpdates, std::move(SkippedPinValueUpdates));
-				SkippedPinValueUpdates = PinValueUpdateMap{};
-			}
-			while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
-			{
-				LiveNow = true;
-				dequeued = true;
-				uint64_t curFrameNum = cur->FrameNumber;
-				if (curFrameNum <= requestedFrameNumber)
+				while (Peek(result))
 				{
-					AppendNewUpdates(result.PinValueUpdates, std::move(cur->PinValueUpdates));
-					PendingExecuteInfos.Pop();
+					LiveNow = true;
+					dequeued = true;
+					if (result.FrameNumber <= requestedFrameNumber)
+					{
+						ExecuteInfo pop;
+						Pop();
+					}
+					if (result.FrameNumber >= requestedFrameNumber)
+					{
+						return true;
+					}
 				}
-				if (curFrameNum >= requestedFrameNumber)
-				{
-					result.FrameNumber = requestedFrameNumber;
-					break;
-				}
-			}
-			if ((dequeued && result.FrameNumber == requestedFrameNumber) || !wait || !LiveNow || tryCount++ > retryCount)
-				break;
-			
-			ExecutionCV.wait_for(lock, std::chrono::duration<float>(maxWaitTime / retryCount));
-		}
+
+				return !LiveNow || !wait || tryCount++ > retryCount;
+			}, maxWaitTime / retryCount);
 
 		LiveNow = dequeued;
 		if (oldLiveNow != LiveNow)
@@ -125,10 +91,7 @@ private:
 	}
 	
 	bool LiveNow = true;
-	std::mutex ExecutionGuard;
-	std::condition_variable ExecutionCV;
-	TQueue<ExecuteInfo, EQueueMode::SingleThreaded> PendingExecuteInfos;
-	PinValueUpdateMap SkippedPinValueUpdates;
+	std::mutex Guard;
 };
 
 class UNOSCustomTimeStep;
