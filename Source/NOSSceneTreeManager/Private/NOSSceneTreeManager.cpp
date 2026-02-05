@@ -117,27 +117,130 @@ void FNOSSceneTreeManager::ChangeParentActors()
 	ActorsToBeParentChanged.Empty();
 }
 
+inline ExecuteInfo FNOSSceneTreeManager::WaitForFrame(std::optional<uint64_t> syncedFrameNumber)
+{
+	if (syncedFrameNumber)
+	{
+		UE_LOG(LogCore, Warning, TEXT("Requesting synced %i"), *syncedFrameNumber);
+	}
+	else
+	{
+		UE_LOG(LogCore, Warning, TEXT("Requesting non synced"));
+	}
+	bool dequeued = false;
+	uint64_t biggestFrameNum = 0;
+	ExecuteInfo result{};
+	std::unique_lock lock(ExecutionStateMutex);
+	while (true)
+	{
+		if (!SkippedPinValueUpdates.empty())
+		{
+			AppendNewUpdates(result.PinValueUpdates, std::move(SkippedPinValueUpdates));
+			SkippedPinValueUpdates = PinValueUpdateMap{};
+		}
+		if (!syncedFrameNumber)
+		{
+			return result;
+		}
+		if (ExecutionState_ApiThread == nos::app::ExecutionState::IDLE)
+		{
+			return result;
+		}
+		while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
+		{
+			dequeued = true;
+			uint64_t curFrameNum = *cur->FrameNumber;
+			biggestFrameNum = std::max(biggestFrameNum, curFrameNum);
+			if (curFrameNum <= *syncedFrameNumber)
+			{
+				AppendNewUpdates(result.PinValueUpdates, std::move(cur->PinValueUpdates));
+				PendingExecuteInfos.Pop();
+			}
+			if (curFrameNum >= *syncedFrameNumber)
+			{
+				result.FrameNumber = *syncedFrameNumber;
+				break;
+			}
+		}
+		if (dequeued && result.FrameNumber == syncedFrameNumber)
+			break;
+		ExecutionStateCV.wait(lock);
+	}
+
+	if (syncedFrameNumber && result.FrameNumber != *syncedFrameNumber)
+	{
+		UE_LOG(LogCore, Warning, TEXT("Mismatch between popped frame number and requested frame number: %i, %i"), biggestFrameNum, *syncedFrameNumber);
+	}
+	return result;
+}
+
+inline void FNOSSceneTreeManager::EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
+{
+	ExecuteInfo start{};
+	start.FrameNumber = appExecuteStart->frame_counter();
+	if (auto* pinValueUpdates = appExecuteStart->pin_value_updates())
+		for (auto const& pinValueUpdate : *pinValueUpdates)
+		{
+			uuids::uuid pinId(pinValueUpdate->pin_id()->bytes()->begin(), pinValueUpdate->pin_id()->bytes()->end());
+			start.PinValueUpdates.insert_or_assign(pinId, nos::Buffer(pinValueUpdate->value()->data(), pinValueUpdate->value()->size()));
+		}
+	std::unique_lock lock(ExecutionStateMutex);
+	if (appExecuteStart->reset())
+	{
+		UE_LOG(LogCore, Warning, TEXT("Reset arrived"));
+		while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
+		{
+			AppendNewUpdates(SkippedPinValueUpdates, std::move(cur->PinValueUpdates));
+			PendingExecuteInfos.Pop();
+		}
+		PendingExecuteInfos.Empty();
+	}
+	else
+	{
+		UE_LOG(LogCore, Warning, TEXT("New start arrived %i"), *start.FrameNumber);
+		PendingExecuteInfos.Enqueue(std::move(start));
+		ExecutionStateCV.notify_one();
+	}
+}
+
+inline void FNOSSceneTreeManager::AppendNewUpdates(PinValueUpdateMap& existingUpdates, PinValueUpdateMap&& newUpdates)
+{
+	for (auto& [pinId, buffer] : newUpdates)
+	{
+		existingUpdates[pinId] = std::move(buffer);
+	}
+}
+
 void FNOSSceneTreeManager::OnBeginFrame()
 {
-	if(ToggleExecutionStateToSynced)
 	{
-		ToggleExecutionStateToSynced = false;
-		ExecutionState = nos::app::ExecutionState::SYNCED;
-		if (NOSTextureShareManager::GetInstance()->SwitchStateToSynced())
+		std::unique_lock lock(ExecutionStateMutex);
+		while(ToggleExecutionState_AllThreads > 0)
 		{
-			SendSyncSemaphores(false);
+			ToggleExecutionState_AllThreads--;
+			
+			if (SyncedFrameNumber)
+			{
+				NOSTextureShareManager::GetInstance()->SwitchExecutionState_GameThread(nos::app::ExecutionState::IDLE);
+				SyncedFrameNumber = std::nullopt;
+			}
+			else
+			{
+				SyncedFrameNumber = 0;
+				NOSTextureShareManager::GetInstance()->SwitchExecutionState_GameThread(nos::app::ExecutionState::SYNCED);
+				SendSyncSemaphores(false);
+			}
 		}
 	}
-	
-	NOSPropertyManager.OnBeginFrame();
-	NOSTextureShareManager::GetInstance()->OnBeginFrame();
+	auto frameInfo = WaitForFrame(SyncedFrameNumber);
+	NOSPropertyManager.OnBeginFrame(frameInfo.PinValueUpdates);
+	NOSTextureShareManager::GetInstance()->OnBeginFrame(SyncedFrameNumber);
 }
 
 void FNOSSceneTreeManager::OnEndFrame()
 {
 	NOSPropertyManager.OnEndFrame();
-	auto frameCount = NOSTextureShareManager::GetInstance()->FrameCounter;
-	NOSTextureShareManager::GetInstance()->OnEndFrame();
+	NOSTextureShareManager::GetInstance()->OnEndFrame(SyncedFrameNumber);
 
 
 	flatbuffers::FlatBufferBuilder fb;
@@ -183,15 +286,19 @@ void FNOSSceneTreeManager::OnEndFrame()
 				}
 			}
 		}
-
 	}
-	auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
-		frameCount,
-		&pinValueUpdates));
-	fb.Finish(offset);
-	auto buf = fb.Release();
-	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	if (SyncedFrameNumber)
+	{
+		auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
+			*SyncedFrameNumber,
+			&pinValueUpdates));
+		fb.Finish(offset);
+		auto buf = fb.Release();
+		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+		UE_LOG(LogCore, Warning, TEXT("Sending ExecutionCompleted for frame %i"), *SyncedFrameNumber);
+		NOSClient->AppServiceClient->Send(*root);
+		SyncedFrameNumber = *SyncedFrameNumber + 1;
+	}
 }
 
 void FNOSSceneTreeManager::StartupModule()
@@ -229,8 +336,10 @@ void FNOSSceneTreeManager::StartupModule()
 	NOSClient->OnNOSContextMenuCommandFired.AddRaw(this, &FNOSSceneTreeManager::OnNOSContextMenuCommandFired);
 	NOSClient->OnNOSNodeImported.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeImported);
 	NOSClient->OnNOSNodeRemoved.AddRaw(this, &FNOSSceneTreeManager::OnNOSNodeRemoved);
+	NOSClient->OnNOSExecuteStart_GRPCThread.AddRaw(this, &FNOSSceneTreeManager::EnqueueExecuteStart);
 	NOSClient->OnNOSStateChanged_GRPCThread.AddRaw(this, &FNOSSceneTreeManager::OnNOSStateChanged_GRPCThread);
 	NOSClient->OnNOSLoadNodesOnPaths.AddRaw(this, &FNOSSceneTreeManager::OnNOSLoadNodesOnPaths);
+
 
 	FCoreDelegates::OnBeginFrame.AddRaw(this, &FNOSSceneTreeManager::OnBeginFrame);
 	FCoreDelegates::OnEndFrame.AddRaw(this, &FNOSSceneTreeManager::OnEndFrame);
@@ -536,11 +645,6 @@ bool IsActorDisplayable(const AActor* Actor, bool FilterNonSceneOutliner)
 void FNOSSceneTreeManager::OnNOSConnectionClosed()
 {
 	NOSActorManager->ClearActors();
-	if(ExecutionState == nos::app::ExecutionState::SYNCED)
-	{
-		ExecutionState = nos::app::ExecutionState::IDLE;
-		NOSTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
-	}
 }
 
 void FNOSSceneTreeManager::OnNOSPinValueChanged(nos::fb::UUID const& pinId, uint8_t const* data, size_t size, bool reset)
@@ -749,17 +853,14 @@ void FNOSSceneTreeManager::OnNOSNodeRemoved()
 
 void FNOSSceneTreeManager::OnNOSStateChanged_GRPCThread(nos::app::ExecutionState newState)
 {
-	if(ExecutionState != newState)
+	std::unique_lock lock(ExecutionStateMutex);
+	if(ExecutionState_ApiThread != newState)
 	{
-		if (newState == nos::app::ExecutionState::SYNCED)
-		{
-			ToggleExecutionStateToSynced = true;
-		}
-		else if (newState == nos::app::ExecutionState::IDLE)
-		{
-			ExecutionState = newState;
-			NOSTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
-		}
+		UE_LOG(LogTemp, Log, TEXT("NOS Execution State changed to %d"), (int)newState);
+		ExecutionState_ApiThread = newState;
+		NOSTextureShareManager::GetInstance()->SwitchExecutionState_ApiThread(newState);
+		ToggleExecutionState_AllThreads++;
+		ExecutionStateCV.notify_one();
 	}
 }
 
@@ -3695,7 +3796,7 @@ void FNOSPropertyManager::Reset(bool ResetPortals)
 	FunctionsByContainerAndUEFunction.Empty();
 }
 
-void FNOSPropertyManager::OnBeginFrame()
+void FNOSPropertyManager::OnBeginFrame(PinValueUpdateMap const& updatedPinValues)
 {
 	if (NOSClient->EventDelegates)
 	{
@@ -3706,11 +3807,9 @@ void FNOSPropertyManager::OnBeginFrame()
 		else
 			DeltaSeconds = DEFAULT_DELTA_SECONDS;
 		constexpr float MAX_FRAME_WAIT_MULTIPLIER = 3.0f;
-		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter, DeltaSeconds * MAX_FRAME_WAIT_MULTIPLIER);
-
-		for (auto& [id, val] : executeInfo.PinValueUpdates)
+		for (auto& [id, val] : updatedPinValues)
 		{
-			NOSClient->OnNOSPinValueChanged.Broadcast(*(nos::fb::UUID*)&id, val.As<u8>(), val.Size(), false);
+			NOSClient->OnNOSPinValueChanged.Broadcast(*(nos::fb::UUID const*)&id, val.As<u8>(), val.Size(), false);
 		}
 	}
 	for (auto [id, portal] : PortalPinsById)

@@ -355,41 +355,41 @@ void GetActiveTextureCopiesWithShowAs(nos::fb::ShowAs FilterShowAs, TMap<NOSProp
 	}
 }
 
-void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs,
-	TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber)
+void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, std::optional<uint64_t> syncedFrameNum, nos::fb::ShowAs CopyShowAs,
+	TMap<ID3D12Fence*, uint64_t>& SignalGroup)
 {
-	if(ExecutionState == nos::app::ExecutionState::SYNCED)
+	if(syncedFrameNum)
 	{
 		if(CopyShowAs == nos::fb::ShowAs::INPUT_PIN)
 		{
-			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue,InputFence = InputFence, frameNumber](FRHICommandList& ExecutingCmdList)
+			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue,InputFence = InputFence, syncedFrameNum](FRHICommandList& ExecutingCmdList)
 			{
-				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, InputFence, (2 * frameNumber) + 1);
+				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, InputFence, (2 * *syncedFrameNum) + 1);
 			});
-			SignalGroup.Add(InputFence, (2 * frameNumber) + 2);
+			SignalGroup.Add(InputFence, (2 * *syncedFrameNum) + 2);
 
 #ifdef DEBUG_FRAME_SYNC_LOG
-			UE_LOG(LogTemp, Warning, TEXT("Input pins are waiting on %d") , 2 * frameNumber + 1);
+			UE_LOG(LogTemp, Warning, TEXT("Input pins are waiting on %d") , 2 * *syncedFrameNum + 1);
 #endif
 			
 		}
 		else if (CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN)
 		{
-			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue, OutputFence = OutputFence, frameNumber = frameNumber](FRHICommandList& ExecutingCmdList)
+			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue, OutputFence = OutputFence, syncedFrameNum](FRHICommandList& ExecutingCmdList)
 			{
 				
-				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, OutputFence, (2 * frameNumber));
+				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, OutputFence, (2 * *syncedFrameNum));
 			});
-			SignalGroup.Add(OutputFence, (2 * frameNumber) + 1);
+			SignalGroup.Add(OutputFence, (2 * *syncedFrameNum) + 1);
 
 #ifdef DEBUG_FRAME_SYNC_LOG
-			UE_LOG(LogTemp, Warning, TEXT("Out pins are waiting on %d") , 2 * frameNumber);
+			UE_LOG(LogTemp, Warning, TEXT("Out pins are waiting on %d") , 2 * *syncedFrameNum);
 #endif
 		}
 	}
 }
 
-void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
+void NOSTextureShareManager::ProcessCopies(std::optional<uint64_t> syncedFrameNum, nos::fb::ShowAs CopyShowAs)
 {
 	CheckAndUpdateTexturePinValues();
 	TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>> CopiesFiltered;
@@ -397,14 +397,14 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
 
 	//auto cmdData = GetNewCommandList();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this, CopyShowAs, CopiesFiltered, frameNumber = FrameCounter](FRHICommandListImmediate& RHICmdList)
+		[this, syncedFrameNum, CopyShowAs, CopiesFiltered](FRHICommandListImmediate& RHICmdList)
 		{
 #ifdef DEBUG_NODOS_TEXTURE_COPIES
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Output, CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN, TEXT("Nodos Copies(Output)"));
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Input, CopyShowAs == nos::fb::ShowAs::INPUT_PIN, TEXT("Nodos Copies(Input)"));
 #endif
 			TMap<ID3D12Fence*, u64> SignalGroup;
-			SetupFences(RHICmdList, CopyShowAs, SignalGroup, frameNumber);
+			SetupFences(RHICmdList, syncedFrameNum, CopyShowAs, SignalGroup);
 			for (auto& [URT, pin] : CopiesFiltered)
 			{
 				FRHICopyTextureInfo CopyInfo;
@@ -437,15 +437,14 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
 		});
 }
 
-void NOSTextureShareManager::OnBeginFrame()
+void NOSTextureShareManager::OnBeginFrame(std::optional<uint64_t> syncedFrameNum)
 {
-	ProcessCopies(nos::fb::ShowAs::INPUT_PIN);
+	ProcessCopies(syncedFrameNum, nos::fb::ShowAs::INPUT_PIN);
 }
 
-void NOSTextureShareManager::OnEndFrame()
+void NOSTextureShareManager::OnEndFrame(std::optional<uint64_t> syncedFrameNum)
 {
-	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN);
-	FrameCounter++;
+	ProcessCopies(syncedFrameNum, nos::fb::ShowAs::OUTPUT_PIN);
 	while(!ResourcesToDelete.IsEmpty())
 	{
 		auto* resource = ResourcesToDelete.Peek();
@@ -465,33 +464,32 @@ void NOSTextureShareManager::OnEndFrame()
 	// 	});
 }
 
-bool NOSTextureShareManager::SwitchStateToSynced()
+void NOSTextureShareManager::SwitchExecutionState_GameThread(nos::app::ExecutionState newState)
 {
-	FScopeLock Lock(&CriticalSectionState);
-	RenewSemaphores();
-	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this](FRHICommandListImmediate& RHICmdList)
-		{
-			ExecutionState = nos::app::ExecutionState::SYNCED;
-		});
-
-	return true;
+	if (newState == nos::app::ExecutionState::SYNCED)
+	{
+		RenewSemaphores();
+	}
 }
 
-void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber)
+void NOSTextureShareManager::SwitchExecutionState_ApiThread(nos::app::ExecutionState newState)
 {
-	FScopeLock Lock(&CriticalSectionState);
-	ExecutionState = nos::app::ExecutionState::IDLE;
-	for(int i = 0; i < 2; i++)
+	if (newState == nos::app::ExecutionState::IDLE)
 	{
-		if (InputFence && OutputFence)
+		std::unique_lock lock(FenceMutex);
+		for (int i = 0; i < 2; i++)
 		{
-			InputFence->Signal(UINT64_MAX);
-			OutputFence->Signal(UINT64_MAX);
+			if (InputFence)
+			{
+				InputFence->Signal(UINT64_MAX);
+			}
+			if (OutputFence)
+			{
+				OutputFence->Signal(UINT64_MAX);
+			}
+			FPlatformProcess::Sleep(0.2);
 		}
-		FPlatformProcess::Sleep(0.2);
 	}
-	FrameCounter = 0;
 }
 
 void NOSTextureShareManager::Reset()
@@ -540,6 +538,7 @@ void NOSTextureShareManager::Initiate()
 
 void NOSTextureShareManager::RenewSemaphores()
 {
+	std::unique_lock lock(FenceMutex);
 	if (InputFence)
 	{
 		::CloseHandle(SyncSemaphoresExportHandles.InputSemaphore);
@@ -553,8 +552,6 @@ void NOSTextureShareManager::RenewSemaphores()
 		OutputFence->Release();
 		OutputFence = nullptr;
 	}
-
-	FrameCounter = 0;
 	
 	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&InputFence));
 	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&OutputFence));

@@ -369,7 +369,11 @@ void NOSEventDelegates::OnCloseApp()
 
 void NOSEventDelegates::OnExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
 {
-	ExecuteQueue.EnqueueExecuteStart(appExecuteStart);
+	if (!PluginClient)
+	{
+		return;
+	}
+	PluginClient->OnExecuteStart_GrpcThread(appExecuteStart);
 }
 
 void NOSEventDelegates::OnNodeRemoved()
@@ -534,6 +538,11 @@ void FNOSClient::Connected_GrpcThread()
 			}
 			OnNOSConnected.Broadcast();
 		});
+}
+
+void FNOSClient::OnExecuteStart_GrpcThread(nos::app::AppExecuteStart const* appExecuteStart)
+{
+	OnNOSExecuteStart_GRPCThread.Broadcast(appExecuteStart);
 }
 
 void FNOSClient::OnStateChanged_GrpcThread(nos::app::ExecutionState newState)

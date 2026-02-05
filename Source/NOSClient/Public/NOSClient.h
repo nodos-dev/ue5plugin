@@ -24,113 +24,6 @@
 #include <functional> 
 #include <Nodos/AppHelpers.hpp>
 
-using PinValueUpdateMap = std::unordered_map<nos::uuid, nos::Buffer>;
-
-struct ExecuteInfo
-{
-	uint64_t FrameNumber;
-	PinValueUpdateMap PinValueUpdates;
-};
-struct ExecuteFrameNumberQueue
-{
-	ExecuteInfo PopFrameNumber(uint64_t frameNumber, float maxWaitTime)
-	{
-		ExecuteInfo executeInfo{};
-		DiscardExcessThenDequeue(executeInfo, frameNumber, true, maxWaitTime);
-		return executeInfo;
-	}
-	void EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
-	{
-		ExecuteInfo start{};
-		start.FrameNumber = appExecuteStart->frame_counter();
-		if (auto* pinValueUpdates = appExecuteStart->pin_value_updates())
-			for (auto const& pinValueUpdate : *pinValueUpdates)
-			{
-				uuids::uuid pinId(pinValueUpdate->pin_id()->bytes()->begin(), pinValueUpdate->pin_id()->bytes()->end());
-				start.PinValueUpdates.insert_or_assign(pinId, nos::Buffer(pinValueUpdate->value()->data(), pinValueUpdate->value()->size()));
-			}
-		std::unique_lock lock(ExecutionGuard);
-		if (appExecuteStart->reset())
-		{
-			while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
-			{
-				AppendNewUpdates(SkippedPinValueUpdates, std::move(cur->PinValueUpdates));
-				PendingExecuteInfos.Pop();
-			}
-			PendingExecuteInfos.Empty();
-		}
-		else
-		{
-			PendingExecuteInfos.Enqueue(std::move(start));
-			ExecutionCV.notify_one();
-		}
-	}
-private:
-	void AppendNewUpdates(PinValueUpdateMap& existingUpdates, PinValueUpdateMap&& newUpdates)
-	{
-		for (auto& [pinId, buffer] : newUpdates)
-		{
-			existingUpdates[pinId] = std::move(buffer);
-		}
-	}
-	/// Dequeues ExecuteInfo entries until the requestedFrameNumber is reached,
-	/// appending any PinValueUpdates from from discarded or skipped entries to result.PinValueUpdates.
-	/// Even if result does not reach the requestedFrameNumber, its pin value updates should be handled.
-	/// Internally, this method will retry dequeuing up to retryCount times, waiting maxWaitTime / retryCount seconds between tries,
-	/// if wait is true.
-	/// TODO: Rewrite this function to handle execution state changes and avoid waiting like this. Condition variable waits should be driven by state changes, not timeouts.
-	/// Also, frame numbers start from 0, but this code assumes they start from 1 and doesn't wait for frame 0 correctly.
-	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait, float maxWaitTime)
-	{
-		std::unique_lock lock(ExecutionGuard);
-		uint32_t tryCount = 0;
-		bool dequeued = false;
-		bool oldLiveNow = LiveNow;
-		constexpr int retryCount = 20;
-		while (true)
-		{
-			if (!SkippedPinValueUpdates.empty())
-			{
-				AppendNewUpdates(result.PinValueUpdates, std::move(SkippedPinValueUpdates));
-				SkippedPinValueUpdates = PinValueUpdateMap{};
-			}
-			while (ExecuteInfo* cur = PendingExecuteInfos.Peek())
-			{
-				LiveNow = true;
-				dequeued = true;
-				uint64_t curFrameNum = cur->FrameNumber;
-				if (curFrameNum <= requestedFrameNumber)
-				{
-					AppendNewUpdates(result.PinValueUpdates, std::move(cur->PinValueUpdates));
-					PendingExecuteInfos.Pop();
-				}
-				if (curFrameNum >= requestedFrameNumber)
-				{
-					result.FrameNumber = requestedFrameNumber;
-					break;
-				}
-			}
-			if ((dequeued && result.FrameNumber == requestedFrameNumber) || !wait || !LiveNow || tryCount++ > retryCount)
-				break;
-			
-			ExecutionCV.wait_for(lock, std::chrono::duration<float>(maxWaitTime / retryCount));
-		}
-
-		LiveNow = dequeued;
-		if (oldLiveNow != LiveNow)
-			UE_LOG(LogCore, Warning, TEXT("LiveNow Changed"));
-
-		if (LiveNow && result.FrameNumber != requestedFrameNumber)
-			UE_LOG(LogCore, Warning, TEXT("Mismatch between popped frame number and requested frame number: %i, %i"), result.FrameNumber, requestedFrameNumber);
-	}
-	
-	bool LiveNow = true;
-	std::mutex ExecutionGuard;
-	std::condition_variable ExecutionCV;
-	TQueue<ExecuteInfo, EQueueMode::SingleThreaded> PendingExecuteInfos;
-	PinValueUpdateMap SkippedPinValueUpdates;
-};
-
 class UNOSCustomTimeStep;
 typedef std::function<void()> Task;
 
@@ -182,8 +75,6 @@ public:
 	void OnExecuteStart(nos::app::AppExecuteStart const* appExecuteStart);
 
 	FNOSClient* PluginClient;
-
-	ExecuteFrameNumberQueue ExecuteQueue{};
 };
 
 class NOSCLIENT_API UENodeStatusHandler
@@ -285,6 +176,7 @@ public:
 	//This function is called when the connection with the Nodos Engine is started
 	void Connected_GrpcThread();
 
+	void OnExecuteStart_GrpcThread(nos::app::AppExecuteStart const* appExecuteStart);
 	void OnStateChanged_GrpcThread(nos::app::ExecutionState newState);
 	void NodeImported_GrpcThread(const nos::fb::Node& node);
 	void NodeRemoved_GrpcThread();
@@ -351,6 +243,7 @@ public:
 	Chain<FNOSNodeSelected> OnNOSNodeSelected;
 	Chain<FNOSNodeImported> OnNOSNodeImported;
 	Chain<FNOSConnectionClosed> OnNOSConnectionClosed;
+	TMulticastDelegate<void(nos::app::AppExecuteStart const*), FDefaultTSDelegateUserPolicy> OnNOSExecuteStart_GRPCThread;
 	TMulticastDelegate<void(nos::app::ExecutionState), FDefaultTSDelegateUserPolicy> OnNOSStateChanged_GRPCThread;
 	TMulticastDelegate<void(const TArray<FString>&), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
 	Chain<FNOSActorSpawnedDestroyed> OnNOSActorSpawnedDestroyed;

@@ -107,12 +107,12 @@ public:
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
-	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
-	void ProcessCopies(nos::fb::ShowAs);
-	void OnBeginFrame();
-	void OnEndFrame();
-	bool SwitchStateToSynced();
-	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
+	void SetupFences(FRHICommandListImmediate& RHICmdList, std::optional<uint64_t> syncedFrameNum, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup);
+	void ProcessCopies(std::optional<uint64_t> syncedFrameNum, nos::fb::ShowAs);
+	void OnBeginFrame(std::optional<uint64_t> syncedFrameNum);
+	void OnEndFrame(std::optional<uint64_t> syncedFrameNum);
+	void SwitchExecutionState_GameThread(nos::app::ExecutionState newState);
+	void SwitchExecutionState_ApiThread(nos::app::ExecutionState newState);
 
 	class FNOSClient* NOSClient;
 	
@@ -123,16 +123,11 @@ public:
 
 	TMap<FGuid, NOSProperty*> PendingCopyQueue;
 
-
-	uint64_t FrameCounter = 0;
+	std::mutex FenceMutex;
 	ID3D12Fence* InputFence = nullptr;
 	ID3D12Fence* OutputFence= nullptr;
 
-	mutable FCriticalSection CriticalSectionState;
-	
 	SyncSemaphoresExport SyncSemaphoresExportHandles;
-	
-	nos::app::ExecutionState ExecutionState = nos::app::ExecutionState::IDLE;
 	
 	void RenewSemaphores();
 private:

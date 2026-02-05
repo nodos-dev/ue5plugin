@@ -27,6 +27,8 @@ struct NOSPortal
 	FString UniqueName;
 };
 
+using PinValueUpdateMap = std::unordered_map<nos::uuid, nos::Buffer>;
+
 //This class holds the list of all properties and pins 
 class NOSSCENETREEMANAGER_API FNOSPropertyManager
 {
@@ -57,7 +59,7 @@ public:
 	TMap<TPair<void*, UFunction*>, TSharedPtr<NOSFunction>> FunctionsByContainerAndUEFunction;
 	void Reset(bool ResetPortals = true);
 
-	void OnBeginFrame();
+	void OnBeginFrame(PinValueUpdateMap const& updatedPinValues);
 	void OnEndFrame();
 };
 
@@ -67,6 +69,7 @@ struct SavedActorData
 	FName NodosUniqueName;
 	FName NodosDisplayName;
 };
+
 
 class NOSSCENETREEMANAGER_API FNOSActorManager
 {
@@ -116,6 +119,11 @@ public:
 	void ExecutePortalPropertyAction(uint32 command, class FNOSSceneTreeManager* NOSSceneTreeManager, FGuid PortalId);
 };
 
+struct ExecuteInfo
+{
+	std::optional<uint64_t> FrameNumber;
+	PinValueUpdateMap PinValueUpdates;
+};
 
 class NOSSCENETREEMANAGER_API FNOSSceneTreeManager : public IModuleInterface {
 
@@ -340,9 +348,16 @@ public:
 
 	bool bIsModuleFunctional = false;
 
-	nos::app::ExecutionState ExecutionState = nos::app::ExecutionState::IDLE;
+	std::mutex ExecutionStateMutex;
+	std::condition_variable ExecutionStateCV;
+	nos::app::ExecutionState ExecutionState_ApiThread = nos::app::ExecutionState::IDLE;
+	uint64_t ToggleExecutionState_AllThreads = false;
+	TQueue<ExecuteInfo, EQueueMode::SingleThreaded> PendingExecuteInfos;
+	PinValueUpdateMap SkippedPinValueUpdates;
 
-	bool ToggleExecutionStateToSynced = false;
+	// Has value when synced with Nodos
+	std::optional<uint64_t> SyncedFrameNumber = std::nullopt;
+
 	bool ShowHiddenActorsOnNodos = false;
 
 	bool AlwaysUpdateOnActorSpawns = false;
@@ -355,5 +370,16 @@ public:
 
 	static TSet<FGuid> PropertiesNeeded;
 
+private:
+	/// Dequeues ExecuteInfo entries until the requestedFrameNumber is reached,
+	/// appending any PinValueUpdates from from discarded or skipped entries to result.PinValueUpdates.
+	/// Even if result does not reach the requestedFrameNumber, its pin value updates should be handled.
+	/// Internally, this method will retry dequeuing up to retryCount times, waiting maxWaitTime / retryCount seconds between tries,
+	/// if wait is true.
+	/// TODO: Rewrite this function to handle execution state changes and avoid waiting like this. Condition variable waits should be driven by state changes, not timeouts.
+	/// Also, frame numbers start from 0, but this code assumes they start from 1 and doesn't wait for frame 0 correctly.
+	ExecuteInfo WaitForFrame(std::optional<uint64_t> syncedFrameNumber);
+	void EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart);
+	void AppendNewUpdates(PinValueUpdateMap& existingUpdates, PinValueUpdateMap&& newUpdates);
 };
 

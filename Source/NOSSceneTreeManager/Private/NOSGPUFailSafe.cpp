@@ -34,18 +34,8 @@ uint32 NOSGPUFailSafeRunnable::Run()
 			{
 				UE_LOG(LogTemp, Error, TEXT("GPU 2 sec timeout, trying to recover shortly..."));
 				auto NOSSceneTreeManager = &FModuleManager::LoadModuleChecked<FNOSSceneTreeManager>("NOSSceneTreeManager");
-				NOSSceneTreeManager->ExecutionState = nos::app::ExecutionState::IDLE; 
-				auto TextureManager = NOSTextureShareManager::GetInstance();
-				if(TextureManager->InputFence && TextureManager->OutputFence)
-				{
-					TextureManager->ExecutionState = nos::app::ExecutionState::IDLE;
-					for(int i = 0; i < 5; i++)
-					{
-						TextureManager->InputFence->Signal(UINT64_MAX);
-						TextureManager->OutputFence->Signal(UINT64_MAX);
-						FPlatformProcess::Sleep(0.2);
-					}
-				}
+				std::unique_lock lock(NOSSceneTreeManager->ExecutionStateMutex);
+				NOSSceneTreeManager->OnNOSStateChanged_GRPCThread(nos::app::ExecutionState::IDLE);
 				if(NOSSceneTreeManager->NOSClient)
 				{
 					flatbuffers::FlatBufferBuilder mb;
