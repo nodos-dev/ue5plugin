@@ -1,4 +1,5 @@
 #include "NOSGPUBuffer.h"
+#include "RenderingThread.h"
 
 bool UNOSGPUBuffer::IsCreated() const
 {
