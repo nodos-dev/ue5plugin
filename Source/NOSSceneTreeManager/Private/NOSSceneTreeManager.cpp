@@ -459,6 +459,8 @@ bool FNOSSceneTreeManager::CheckNewLevels(float dt)
 	if (!IsValid(daWorld))
 		return true;
 
+	bool backupAlwaysUpdateOnActorSpawns = AlwaysUpdateOnActorSpawns;
+	AlwaysUpdateOnActorSpawns = true;
 	auto& streamingLevels = daWorld->GetStreamingLevels();
 	for (auto* level : streamingLevels)
 	{
@@ -474,6 +476,7 @@ bool FNOSSceneTreeManager::CheckNewLevels(float dt)
 			AlreadyLoadedStreamingLevels.Add(loadedLevel);
 		}
 	}
+	AlwaysUpdateOnActorSpawns = backupAlwaysUpdateOnActorSpawns;
 	return true;
 }
 
@@ -831,6 +834,9 @@ void FNOSSceneTreeManager::OnLevelRemovedFromWorld(ULevel* Level, UWorld* World)
 		return;
 	}
 
+	bool backupAlwaysUpdateOnActorSpawns = AlwaysUpdateOnActorSpawns;
+	AlwaysUpdateOnActorSpawns = true;
+
 	for (auto Actor : Level->Actors)
 	{
 		if (IsValid(Actor))
@@ -840,6 +846,7 @@ void FNOSSceneTreeManager::OnLevelRemovedFromWorld(ULevel* Level, UWorld* World)
 		}
 	}
 	AlreadyLoadedStreamingLevels.Remove(Level);
+	AlwaysUpdateOnActorSpawns = backupAlwaysUpdateOnActorSpawns;
 }
 
 
