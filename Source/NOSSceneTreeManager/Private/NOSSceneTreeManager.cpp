@@ -489,28 +489,6 @@ void FNOSSceneTreeManager::OnNOSNodeSelected(nos::fb::UUID const& nodeId)
 	}
 }
 
-void FNOSSceneTreeManager::LoadNodesOnPath(FString NodePath)
-{
-	TArray<FString> NodeNames;
-	NodePath.ParseIntoArray(NodeNames, TEXT("/"));
-
-	auto CurrentNode = SceneTree.Root;
-	for(auto nodeName : NodeNames)
-	{
-		//find node from the children of the current node
-		for(auto child : CurrentNode->Children)
-		{
-			if(child && child->Name == nodeName)
-			{
-				LOGF("Populating node named %s", *child->Name);
-				PopulateNodeAndDirectDescendants(child.Get());
-				CurrentNode = child;
-				break;
-			}
-		}
-	}
-}
-
 bool FilterNonSceneOutlinerActor(const AActor* Actor) {
 	static const FName SequencerActorTag(TEXT("SequencerActor"));
 
@@ -766,12 +744,52 @@ void FNOSSceneTreeManager::OnNOSStateChanged_GRPCThread(nos::app::ExecutionState
 	}
 }
 
-void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& paths)
+void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& Paths)
 {
-	for(auto path : paths)
+	const double OnNOSLoadNodesOnPathsStartTime = FPlatformTime::Seconds();
+
+	// Collect every node update produced while loading these paths into one batch, then flush it
+	// as a single BatchAppEvent. Each queued PartialNodeUpdate is identical to the one that would
+	// have been sent individually, in the same order, so the engine - which unwraps BatchAppEvent
+	// and dispatches each event in order - ends up in an identical state.
+	FNodeUpdateBatch Batch;
+
+	for(auto& Path : Paths)
 	{
-		LoadNodesOnPath(path);
+		TArray<FString> NodeNames;
+		Path.ParseIntoArray(NodeNames, TEXT("/"));
+
+		auto CurrentNode = SceneTree.Root;
+		for(auto NodeName : NodeNames)
+		{
+			//find node from the children of the current node
+			for(auto child : CurrentNode->Children)
+			{
+				if(child && child->Name == NodeName)
+				{
+					LOGF("Populating node named %s", *child->Name);
+					PopulateNodeAndDirectDescendants(child.Get(), &Batch);
+					CurrentNode = child;
+					break;
+				}
+			}
+		}
 	}
+
+	// Flush: wrap all queued updates in one BatchAppEvent and send it with a single Send().
+	if (!Batch.Events.empty() && NOSClient && NOSClient->IsConnected())
+	{
+		auto batchOffset = nos::app::CreateBatchAppEventDirect(Batch.Builder, &Batch.Events);
+		auto appEventOffset = nos::CreateAppEventOffset(Batch.Builder, batchOffset);
+		Batch.Builder.Finish(appEventOffset);
+		auto buf = Batch.Builder.Release();
+		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+		NOSClient->AppServiceClient->Send(*root);
+	}
+
+	const double OnNOSLoadNodesOnPathsElapsedMs = (FPlatformTime::Seconds() - OnNOSLoadNodesOnPathsStartTime) * 1000.0;
+	UE_LOG(LogNOSSceneTreeManager, Display, TEXT("OnNOSLoadNodesOnPaths processed %d path(s), batched %d node update(s) into 1 event, in %.3f ms"),
+		Paths.Num(), (int32)Batch.Events.size(), OnNOSLoadNodesOnPathsElapsedMs);
 }
 
 void FNOSSceneTreeManager::OnPostWorldInit(UWorld* World, const UWorld::InitializationValues InitValues)
@@ -2346,7 +2364,7 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 }
 
 
-void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending)
+void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending, FNodeUpdateBatch* OptBatch)
 {
 	LOGF("Sending node update to Nodos with id %s", *nodeId.ToString());
 	if (!NOSClient->IsConnected() || !nodeId.IsValid())
@@ -2354,29 +2372,48 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, boo
 		return;
 	}
 
+	// Batching path: serialize into the batch's shared builder and queue it, instead of sending
+	// now. The contained PartialNodeUpdate is identical to the one this function would send on
+	// its own; OnNOSLoadNodesOnPaths flushes the whole queue as a single BatchAppEvent.
+	if (OptBatch)
+	{
+		auto offset = BuildNodeUpdate(OptBatch->Builder, nodeId, bResetRootPins, filterPinsWhileSending);
+		if (!offset.IsNull())
+		{
+			OptBatch->Events.push_back(nos::CreateAppEventOffset(OptBatch->Builder, offset));
+		}
+		return;
+	}
+
+	flatbuffers::FlatBufferBuilder mb;
+	auto offset = BuildNodeUpdate(mb, nodeId, bResetRootPins, filterPinsWhileSending);
+	if (offset.IsNull())
+	{
+		return;
+	}
+	mb.Finish(offset);
+	auto buf = mb.Release();
+	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+}
+
+flatbuffers::Offset<nos::PartialNodeUpdate> FNOSSceneTreeManager::BuildNodeUpdate(flatbuffers::FlatBufferBuilder& mb, FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending)
+{
 	if (nodeId == SceneTree.Root->Id)
 	{
 		if (!bResetRootPins)
 		{
-			flatbuffers::FlatBufferBuilder mb;
 			std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb, filterPinsWhileSending);
 			std::vector<flatbuffers::Offset<nos::fb::Node>> graphFunctions;
 			for (auto& [_, cfunc] : CustomFunctions)
 			{
 				graphFunctions.push_back(cfunc->Serialize(mb));
 			}
-		
-			std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SceneTree.Root->SerializeMetaData(mb);
-			auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES, 0, 0, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
-			mb.Finish(offset);
-			auto buf = mb.Release();
-			auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-			NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
 
-			return;
+			std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SceneTree.Root->SerializeMetaData(mb);
+			return nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES, 0, 0, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
 		}
 
-		flatbuffers::FlatBufferBuilder mb = flatbuffers::FlatBufferBuilder();
 		std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb, filterPinsWhileSending);
 		std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 		for (auto& [_, property] : CustomProperties)
@@ -2393,24 +2430,17 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, boo
 			graphFunctions.push_back(cfunc->Serialize(mb));
 
 		}
-		
-		std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SceneTree.Root->SerializeMetaData(mb);
-		auto offset =  nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)(&nodeId), nos::ClearFlags::ANY & ~nos::ClearFlags::CLEAR_METADATA, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
-		mb.Finish(offset);
-		auto buf = mb.Release();
-		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
 
-		return;
+		std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SceneTree.Root->SerializeMetaData(mb);
+		return nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)(&nodeId), nos::ClearFlags::ANY & ~nos::ClearFlags::CLEAR_METADATA, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
 	}
 	auto treeNode = SceneTree.GetNode(nodeId);
 	if (!(treeNode))
 	{
-		return;
+		return flatbuffers::Offset<nos::PartialNodeUpdate>();
 	}
 	auto wasSerializedWithFilteredPins = treeNode->WasSerializedWithFilteredPins;
 	treeNode->WasSerializedWithFilteredPins = filterPinsWhileSending;
-	flatbuffers::FlatBufferBuilder mb;
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 	if (treeNode->GetAsActorNode())
 	{
@@ -2436,13 +2466,9 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, boo
 		clearFlags |= nos::ClearFlags::CLEAR_NODES;
 	}
 	std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes;
-	if(shouldClearChildren) 
+	if(shouldClearChildren)
 		graphNodes = treeNode->SerializeChildren(mb, filterPinsWhileSending);
-	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, clearFlags, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
-	mb.Finish(offset);
-	auto buf = mb.Release();
-	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	return nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, clearFlags, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
 }
 
 void FNOSSceneTreeManager::SendEngineFunctionUpdate()
@@ -2824,37 +2850,37 @@ void FNOSSceneTreeManager::SendParentChanged(FGuid Actor, FGuid ParentActor)
 	NOSClient->AppServiceClient->Send(*root);
 }
 
-void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor)
+void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor, FNodeUpdateBatch* OptBatch)
 {
 	LOGF("Populating all childs of %s", *actor->GetFName().ToString());
 	FGuid ActorId = actor->GetActorGuid();
-	PopulateAllChildsOfActor(ActorId);
+	PopulateAllChildsOfActor(ActorId, OptBatch);
 }
 
-void FNOSSceneTreeManager::PopulateNodeAndDirectDescendants(TreeNode* Node)
+void FNOSSceneTreeManager::PopulateNodeAndDirectDescendants(TreeNode* Node, FNodeUpdateBatch* OptBatch)
 {
 	LOGF("Populating all childs of node with id %s", *Node->Id.ToString());
-	PopulateAndSendNode(Node, false);
+	PopulateAndSendNode(Node, false, OptBatch);
 
 	for (auto ChildNode : Node->Children)
 	{
 		if(auto actorNode = ChildNode->GetAsActorNode())
 		{
-			PopulateAndSendNode(ChildNode.Get(), false);
+			PopulateAndSendNode(ChildNode.Get(), false, OptBatch);
 		}
 		else if(auto sceneComponentNode = ChildNode->GetAsSceneComponentNode())
 		{
 
-			PopulateAllChildsOfSceneComponentNode(sceneComponentNode);
+			PopulateAllChildsOfSceneComponentNode(sceneComponentNode, OptBatch);
 		}
 	}
 }
 
-void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending)
+void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending, FNodeUpdateBatch* OptBatch)
 {
 	if (PopulateNode(Node) || (Node->WasSerializedWithFilteredPins && !filterPinsWhileSending))
 	{
-		SendNodeUpdate(Node->Id, true, filterPinsWhileSending);
+		SendNodeUpdate(Node->Id, true, filterPinsWhileSending, OptBatch);
 	}
 }
 
@@ -2876,7 +2902,7 @@ void FNOSSceneTreeManager::ReloadCurrentMap()
 	UGameplayStatics::OpenLevel(daWorld, daWorld->GetFName());
 }
 
-void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId)
+void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId, FNodeUpdateBatch* OptBatch)
 {
 	LOGF("Populating all childs of actor with id %s", *ActorId.ToString());
 	auto ActorNode = SceneTree.GetNodeFromActorId(ActorId);
@@ -2887,23 +2913,23 @@ void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId)
 	}
 	if (PopulateNode(ActorNode))
 	{
-		SendNodeUpdate(ActorNode->Id);
+		SendNodeUpdate(ActorNode->Id, true, false, OptBatch);
 	}
 
 	for (auto ChildNode : ActorNode->Children)
 	{
 		if (ChildNode->GetAsActorNode())
 		{
-			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get());
+			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get(), OptBatch);
 		}
 		else if (ChildNode->GetAsSceneComponentNode())
 		{
-			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode());
+			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode(), OptBatch);
 		}
 	}
 }
 
-void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode)
+void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode, FNodeUpdateBatch* OptBatch)
 {
 	if (!SceneComponentNode)
 	{
@@ -2912,18 +2938,18 @@ void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentN
 
 	if (PopulateNode(SceneComponentNode))
 	{
-		SendNodeUpdate(SceneComponentNode->Id);
+		SendNodeUpdate(SceneComponentNode->Id, true, false, OptBatch);
 	}
 
 	for (auto ChildNode : SceneComponentNode->Children)
 	{
 		if (ChildNode->GetAsActorNode())
 		{
-			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get());
+			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get(), OptBatch);
 		}
 		else if (ChildNode->GetAsSceneComponentNode())
 		{
-			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode());
+			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode(), OptBatch);
 		}
 	}
 }

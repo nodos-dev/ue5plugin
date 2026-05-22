@@ -27,6 +27,15 @@ struct NOSPortal
 	FString UniqueName;
 };
 
+//Accumulates the node updates produced during a single OnNOSLoadNodesOnPaths call so they can be
+//flushed to Nodos as one BatchAppEvent instead of many individual SendPartialNodeUpdate messages.
+//Builder holds the serialized data; Events holds one AppEvent offset (a PartialNodeUpdate) per node.
+struct FNodeUpdateBatch
+{
+	flatbuffers::FlatBufferBuilder Builder;
+	std::vector<flatbuffers::Offset<nos::app::AppEvent>> Events;
+};
+
 //This class holds the list of all properties and pins 
 class NOSSCENETREEMANAGER_API FNOSPropertyManager
 {
@@ -138,8 +147,6 @@ public:
 	//every function of this class runs in game thread
 	void OnNOSNodeSelected(nos::fb::UUID const& nodeId);
 
-	void LoadNodesOnPath(FString NodePath);
-
 	//called when connection is ended with Nodos
 	void OnNOSConnectionClosed();
 
@@ -165,9 +172,9 @@ public:
 	void OnNOSLoadNodesOnPaths(const TArray<FString>& paths);
 	//END OF Nodos DELEGATES
 	 
-	void PopulateAllChildsOfActor(FGuid ActorId);
-	
-	void PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode);
+	void PopulateAllChildsOfActor(FGuid ActorId, FNodeUpdateBatch* OptBatch = nullptr);
+
+	void PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode, FNodeUpdateBatch* OptBatch = nullptr);
 
 	void SendSyncSemaphores(bool RenewSemaphores);
 	
@@ -217,8 +224,13 @@ public:
 	//Populates node with child actors/components, functions and properties
 	bool PopulateNode(TreeNode* node);
 
-	//Sends node updates to the Nodos
-	void SendNodeUpdate(FGuid NodeId, bool bResetRootPins = true, bool filterPinsWhileSending = false);
+	//Sends node updates to the Nodos. When OptBatch is given, the update is queued into it
+	//instead of being sent immediately (see OnNOSLoadNodesOnPaths / FNodeUpdateBatch).
+	void SendNodeUpdate(FGuid NodeId, bool bResetRootPins = true, bool filterPinsWhileSending = false, FNodeUpdateBatch* OptBatch = nullptr);
+
+	//Serializes a node update into the given builder and returns its offset.
+	//Returns a null offset when the node no longer exists in the scene tree.
+	flatbuffers::Offset<nos::PartialNodeUpdate> BuildNodeUpdate(flatbuffers::FlatBufferBuilder& Builder, FGuid NodeId, bool bResetRootPins, bool filterPinsWhileSending);
 
 	void SendEngineFunctionUpdate();
 
@@ -250,12 +262,12 @@ public:
 
 	void SendActorNodeDeleted(ActorNode* node);
 	
-	void PopulateAllChildsOfActor(AActor* actor);
+	void PopulateAllChildsOfActor(AActor* actor, FNodeUpdateBatch* OptBatch = nullptr);
 
 	//This populates the node, its direct descendants, all of its child components and all of their children.
-	void PopulateNodeAndDirectDescendants(TreeNode* Node);
+	void PopulateNodeAndDirectDescendants(TreeNode* Node, FNodeUpdateBatch* OptBatch = nullptr);
 
-	void PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending);
+	void PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending, FNodeUpdateBatch* OptBatch = nullptr);
 
 	void ReloadCurrentMap();
 
