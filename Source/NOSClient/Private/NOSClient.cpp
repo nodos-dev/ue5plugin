@@ -242,7 +242,7 @@ void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
 		break;
 	}
 	case EngineEventUnion::LoadNodesOnPaths: {
-		OnLoadNodesOnPaths(event->event_as<nos::app::LoadNodesOnPaths>());
+		OnLoadNodesOnPaths(event->event_as<nos::app::LoadNodesOnPaths>(), event->request_id());
 		break;
 	}
 	case EngineEventUnion::AppExecuteStart: {
@@ -339,7 +339,7 @@ void NOSEventDelegates::OnConsoleAutoCompleteSuggestionRequest(
 		});
 }
 
-void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest)
+void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest, nos::fb::UUID const* requestId)
 {
 	LOG("LoadNodesOnPaths request from Nodos");
 	if (!PluginClient || !loadNodesOnPathsRequest->child_node_paths())
@@ -351,9 +351,10 @@ void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loa
 	{
 		Paths.Push(path->c_str());
 	}
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, Paths]()
+	FGuid RequestId = requestId ? *(FGuid*)requestId : FGuid();
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, Paths, RequestId]()
 		{
-			NOSClient->OnNOSLoadNodesOnPaths.Broadcast(Paths);
+			NOSClient->OnNOSLoadNodesOnPaths.Broadcast(Paths, RequestId);
 		});
 }
 

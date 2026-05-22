@@ -140,7 +140,7 @@ public:
 	void OnStateChanged(nos::app::ExecutionState newState);
 	void OnConsoleCommand(nos::app::ConsoleCommand const* consoleCommand);
 	void OnConsoleAutoCompleteSuggestionRequest(nos::app::ConsoleAutoCompleteSuggestionRequest const* consoleAutoCompleteSuggestionRequest);
-	void OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest);
+	void OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest, nos::fb::UUID const* requestId);
 	void OnCloseApp();
 	void OnExecuteStart(nos::app::AppExecuteStart const* appExecuteStart);
 
@@ -315,7 +315,7 @@ public:
 	Chain<FNOSNodeImported> OnNOSNodeImported;
 	Chain<FNOSConnectionClosed> OnNOSConnectionClosed;
 	TMulticastDelegate<void(nos::app::ExecutionState), FDefaultTSDelegateUserPolicy> OnNOSStateChanged_GRPCThread;
-	TMulticastDelegate<void(const TArray<FString>&), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
+	TMulticastDelegate<void(const TArray<FString>&, FGuid), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
 	Chain<FNOSActorSpawnedDestroyed> OnNOSActorSpawnedDestroyed;
 	// FNOSConsoleCommandExecuted OnNOSConsoleCommandExecuted;
 	
