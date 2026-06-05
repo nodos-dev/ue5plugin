@@ -364,7 +364,8 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 		{
 			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue,InputFence = InputFence, frameNumber](FRHICommandList& ExecutingCmdList)
 			{
-				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, InputFence, (2 * frameNumber) + 1);
+				TSharedPtr<std::atomic<bool>> bHasSignalled;
+				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, InputFence, (2 * frameNumber) + 1, bHasSignalled);
 			});
 			SignalGroup.Add(InputFence, (2 * frameNumber) + 2);
 
@@ -377,8 +378,8 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 		{
 			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue, OutputFence = OutputFence, frameNumber = frameNumber](FRHICommandList& ExecutingCmdList)
 			{
-				
-				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, OutputFence, (2 * frameNumber));
+				TSharedPtr<std::atomic<bool>> bHasSignalled;
+				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, OutputFence, (2 * frameNumber), bHasSignalled);
 			});
 			SignalGroup.Add(OutputFence, (2 * frameNumber) + 1);
 
@@ -489,7 +490,7 @@ void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumb
 			InputFence->Signal(UINT64_MAX);
 			OutputFence->Signal(UINT64_MAX);
 		}
-		FPlatformProcess::Sleep(0.2);
+		FPlatformProcess::Sleep(0.2f);
 	}
 	FrameCounter = 0;
 }

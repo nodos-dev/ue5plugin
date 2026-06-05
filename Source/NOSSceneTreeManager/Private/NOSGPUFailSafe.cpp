@@ -43,7 +43,7 @@ uint32 NOSGPUFailSafeRunnable::Run()
 					{
 						TextureManager->InputFence->Signal(UINT64_MAX);
 						TextureManager->OutputFence->Signal(UINT64_MAX);
-						FPlatformProcess::Sleep(0.2);
+						FPlatformProcess::Sleep(0.2f);
 					}
 				}
 				if(NOSSceneTreeManager->NOSClient)

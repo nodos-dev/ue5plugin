@@ -138,11 +138,10 @@ public class NOSClient : ModuleRules
 	public static NosIncludeDirs? GetSDKDir(string RelativeEnginePath)
 	{
 		string NosmanPath;
-		
+
 		ConfigHierarchy PlatformGameConfig = ConfigCache.ReadHierarchy(ConfigHierarchyType.EditorSettings, null, UnrealTargetPlatform.Win64);
 
 		PlatformGameConfig.GetString("/Script/NOSClient.NOSSettings", "NosmanPath", out NosmanPath);
-
 
 		if (!Path.IsPathRooted(NosmanPath))
 		{

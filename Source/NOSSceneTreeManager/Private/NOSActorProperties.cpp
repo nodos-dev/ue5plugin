@@ -36,7 +36,7 @@ bool PropertyVisibleExp(FProperty* ueproperty)
 		//!ueproperty->HasAllPropertyFlags(CPF_EditorOnly) && //? dont know what this flag does but it hides more than necessary
 		ueproperty->HasAllPropertyFlags(CPF_Edit) &&
 		//ueproperty->HasAllPropertyFlags(CPF_BlueprintVisible) && //? dont know what this flag does but it hides more than necessary
-		ueproperty->HasAllFlags(RF_Public);
+		ueproperty->HasAllPropertyFlags(RF_Public);
 }
 
 NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString parentCategory, uint8* structPtr, NOSStructProperty* parentProperty)
