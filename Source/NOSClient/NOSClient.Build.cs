@@ -208,7 +208,7 @@ public class NOSClient : ModuleRules
 		}
 
 		string VulkanSubsystemIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.vulkan", "6.0");
-		string TrackIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.track", "1.0");
+		string TrackIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.track", "1.9");
 		string LinoIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.lino", "1.0");
 
 		return new NosIncludeDirs(NodosSDKDir, VulkanSubsystemIncludeDir, TrackIncludeDir, LinoIncludeDir);

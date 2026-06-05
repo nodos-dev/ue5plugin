@@ -600,7 +600,7 @@ public:
 	{
 		
 		data = std::vector<uint8_t>(1, 0);
-		TypeName = "nos.sys.track.Track";
+		TypeName = "nos.track.Track";
 	}
 	virtual std::vector<uint8> UpdatePinValue(uint8* customContainer = nullptr) override;
 
