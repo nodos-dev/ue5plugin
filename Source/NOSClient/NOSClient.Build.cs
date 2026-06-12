@@ -205,6 +205,7 @@ public class NOSClient : ModuleRules
 				return null;
 			}
 			NodosSDKDir = SDKdir;
+			Console.WriteLine(NodosSDKDir);
 		}
 
 		string VulkanSubsystemIncludeDir = InstallNodosModuleAndGetPublicInclude(NosmanPath, "nos.sys.vulkan", "6.0");
