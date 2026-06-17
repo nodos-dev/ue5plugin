@@ -208,13 +208,14 @@ public:
 	UClass* FunctionContainerClass = nullptr;
 
 	virtual ~NOSProperty() {}
+
+	bool UpdateReadOnly();
 protected:
 	virtual void SetPropValue_Internal(void* val, size_t size, uint8* customContainer = nullptr);
 	virtual void SetProperty_InCont(void* container, void* val);
 
 private:
 	void CallOnChangedFunction();
-
 };
 
 class NOSTriggerProperty : public NOSProperty

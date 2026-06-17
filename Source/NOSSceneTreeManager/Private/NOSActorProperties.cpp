@@ -785,7 +785,37 @@ flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBuffer
 		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(), nos::fb::ShowAs::PROPERTY, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, 0, 0, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 	}
 	bool isTexture = TypeName == nos::sys::vulkan::Texture::GetFullyQualifiedName();
+	UpdateReadOnly();
 	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, &min_val, &max_val, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)  /*If texture and can be output, then it should be live to let auto sync multi out work*/, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+}
+
+bool NOSProperty::UpdateReadOnly()
+{
+	UObject* Container = ActorContainer.Get();
+	if (!Container) Container = ComponentContainer.Get();
+	else if (!Container && ObjectPtr && IsValid(ObjectPtr)) Container = ObjectPtr;
+
+	if (Container && Property)
+	{
+		// check if readonly is bound to a delegate
+		FString Condition = Property->GetMetaData(TEXT("EditCondition"));
+		if (Condition.EndsWith(TEXT("()")))
+		{
+			Condition.LeftChopInline(2);
+
+			if (UFunction* Function = Container->FindFunction(*Condition))
+			{
+				check(Function->NumParms == 1); // return value only
+
+				struct { bool ReturnValue; } Params;
+				Container->ProcessEvent(Function, &Params);
+
+				ReadOnly = !Params.ReturnValue;
+			}
+		}
+	}
+
+	return ReadOnly;
 }
 
 std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> NOSProperty::SerializeMetaData(flatbuffers::FlatBufferBuilder& fbb)
@@ -1699,14 +1729,12 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		ActorUniqueName = actor->GetFName().ToString();
 	}
 
-	// FProperty* tryprop = FindFProperty<FProperty>(*uproperty->GetPathName());
-	//UE_LOG(LogNOSSceneTreeManager, Warning, TEXT("name of the prop before %s, found property name %s"),*uproperty->GetFName().ToString(),  *tryprop->GetFName().ToString());
-
-
 	FString PropertyPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
 	FString ComponentPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::component);
 	FString IdStringKey = ActorUniqueName + ComponentPath + PropertyPath;
 	prop->Id = StringToFGuid(IdStringKey);
+	prop->UpdateReadOnly();
+
 	return prop;
 }
 
