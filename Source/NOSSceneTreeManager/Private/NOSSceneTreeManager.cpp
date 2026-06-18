@@ -832,16 +832,7 @@ void FNOSSceneTreeManager::OnPostWorldInit(UWorld* World, const UWorld::Initiali
 
 void FNOSSceneTreeManager::OnPreWorldFinishDestroy(UWorld* World)
 {
-	//TODO check if we actually need this function
-	return;
-#if 0
-	SceneTree.Clear();
-	RegisteredProperties = Pins;
-	PropertiesMap.Empty();
-	NOSActorManager->ReAddActorsToSceneTree();
-	RescanScene(false);
-	SendNodeUpdate(FNOSClient::NodeId, false);
-#endif
+	daWorld = nullptr;
 }
 
 void FNOSSceneTreeManager::OnLevelAddedToWorld(ULevel* level, UWorld*)
