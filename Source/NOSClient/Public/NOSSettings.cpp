@@ -13,7 +13,7 @@ void UNOSSettings::PostEditChangeProperty(struct FPropertyChangedEvent& Property
 	auto NOSClient = &FModuleManager::LoadModuleChecked<FNOSClient>("NOSClient");
 	if(!NOSClient->bIsInitialized)
 	{
-		if (FNodos::Initialize())
+		if (GNodos.Initialize())
 		{
 			NOSClient->Initialize();
 		}
@@ -21,7 +21,7 @@ void UNOSSettings::PostEditChangeProperty(struct FPropertyChangedEvent& Property
 	else
 	{
 		NOSClient->ShutdownModule();
-		if (FNodos::Initialize())
+		if (GNodos.Initialize())
 		{
 			NOSClient->Initialize();
 		}

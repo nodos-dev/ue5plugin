@@ -42,9 +42,12 @@ DEFINE_LOG_CATEGORY(LogNOSClient);
 FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 
-void* FNodos::LibHandle = nullptr;
-nos::app::FN_MakeAppServiceClient* FNodos::MakeAppServiceClient = nullptr;
-nos::app::FN_ShutdownClient* FNodos::ShutdownClient = nullptr;
+FNodos GNodos;
+
+nos::app::IAppApiProcLoader::ProcFuncPtr FNodos::GetProcAddress(const char* name) const
+{
+	return (ProcFuncPtr)FPlatformProcess::GetDllExport(LibHandle, UTF8_TO_TCHAR(name));
+}
 
 FString FNodos::GetNodosSDKDir()
 {
@@ -63,7 +66,7 @@ FString FNodos::GetNodosSDKDir()
 	{
 		return "";
 	}
-	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.5.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
+	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 21.0.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);
 	LOGF("Nodos SDK path is %s", *OutResults);
 
 	TSharedPtr<FJsonObject> SDKInfoJsonParsed;
@@ -81,7 +84,7 @@ FString FNodos::GetNodosSDKDir()
 bool FNodos::Initialize()
 {
 	FString SdkPath = GetNodosSDKDir();
-	FString SdkBinPath = FPaths::Combine(SdkPath, TEXT("bin"));
+	FString SdkBinPath = FPaths::Combine(SdkPath, TEXT("Binaries"));
 	FPlatformProcess::PushDllDirectory(*SdkBinPath);
 	FString SdkDllPath = FPaths::Combine(SdkBinPath, "nosAppSDK.dll");
 
@@ -110,23 +113,13 @@ bool FNodos::Initialize()
 		return false;
 	}
 
-	auto CheckCompatible = (nos::app::FN_CheckSDKCompatibility*)FPlatformProcess::GetDllExport(LibHandle, TEXT("CheckSDKCompatibility"));
-	bool IsCompatible = CheckCompatible && CheckCompatible(NOS_APPLICATION_SDK_VERSION_MAJOR, NOS_APPLICATION_SDK_VERSION_MINOR, NOS_APPLICATION_SDK_VERSION_PATCH);
-	if (!IsCompatible)
+	auto res = nos::app::AppApi::Create(*this);
+	if (auto err = res.Error())
 	{
-		UE_LOG(LogNOSClient, Error, TEXT("Nodos SDK is incompatible with the plugin. The plugin uses a different version of the SDK (%s) that what is available in your system."), *SdkDllPath)
+		UE_LOG(LogNOSClient, Error, TEXT("Unable to load Nodos SDK at %s: %s"), *SdkDllPath, *FString(err->c_str()))
 		return false;
 	}
-
-	MakeAppServiceClient = (nos::app::FN_MakeAppServiceClient*)FPlatformProcess::GetDllExport(LibHandle, TEXT("MakeAppServiceClient"));
-	ShutdownClient = (nos::app::FN_ShutdownClient*)FPlatformProcess::GetDllExport(LibHandle, TEXT("ShutdownClient"));
-	
-	if (!MakeAppServiceClient || !ShutdownClient)
-	{
-		UE_LOG(LogNOSClient, Error, TEXT("Failed to load some of the functions in Nodos SDK. The plugin uses a different version of the SDK (%s) that what is available in your system."), *SdkDllPath)
-		return false;
-	}
-
+	Api = std::move(*res);
 	return true;
 }
 
@@ -134,10 +127,9 @@ void FNodos::Shutdown()
 {
 	if (LibHandle)
 	{
+		Api = nullptr;
 		FPlatformProcess::FreeDllHandle(LibHandle);
 		LibHandle = nullptr;
-		MakeAppServiceClient = nullptr;
-		ShutdownClient = nullptr;
 		LOG("Unloaded Nodos SDK dll successfully.");
 	}
 }
@@ -335,7 +327,7 @@ void NOSEventDelegates::OnConsoleAutoCompleteSuggestionRequest(
 		    mb.Finish(offset);
 		    auto buf = mb.Release();
 		    auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		    NOSClient->AppServiceClient->Send(*root);
+		    NOSClient->AppServiceClient->Send(root);
 		});
 }
 
@@ -628,18 +620,25 @@ void FNOSClient::TryConnect()
 		return;
 	}
 
-	if (!AppServiceClient && FNodos::MakeAppServiceClient)
+	if (!AppServiceClient && GNodos.Api)
 	{
 		auto ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
 		auto ExePath = FString(FPlatformProcess::ExecutablePath());
-		AppServiceClient = FNodos::MakeAppServiceClient("localhost:50053", nos::app::ApplicationInfo {
+		auto appInfo = nosApplicationInfo{
 			.AppKey = TCHAR_TO_UTF8(*FNOSClient::AppKey),
 			.AppName = "UE5"
-		});
+		};
+		auto Result = nos::app::AppServiceClient::CreateClient(GNodos.Api, "localhost:50053", appInfo);
+		if (auto Err = Result.Error())
+		{
+			LOGF("Failed to create AppServiceClient: %s", *FString(Err->c_str()));
+			return;
+		}
+		AppServiceClient = std::move(*Result);
 		EventDelegates = TSharedPtr<NOSEventDelegates>(new NOSEventDelegates());
 		EventDelegates->PluginClient = this;
 		UENodeStatusHandler.SetClient(this);
-		AppServiceClient->RegisterEventDelegates(EventDelegates.Get());
+		AppServiceClient->SetEventDelegates(*EventDelegates);
 		LOG("AppClient instance is created");
 	}
 
@@ -767,7 +766,7 @@ void FNOSClient::StartupModule() {
 		return;
 	}
 
-	if (!FNodos::Initialize())
+	if (!GNodos.Initialize())
 	{
 		return;
 	}
@@ -783,12 +782,8 @@ void FNOSClient::ShutdownModule()
 		NOSTimeStep->RemoveFromRoot();
 		NOSTimeStep = nullptr;
 	}
-	if(FNodos::ShutdownClient)
-	{
-		FNodos::ShutdownClient(AppServiceClient);
-	}
-	AppServiceClient = nullptr;
-	FNodos::Shutdown();
+	AppServiceClient.reset();
+	GNodos.Shutdown();
 
 	if (GEditor)
 	{
@@ -1006,7 +1001,7 @@ void UENodeStatusHandler::SendStatus()
 	Builder.Finish(offset);
 	auto buf = Builder.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	PluginClient->AppServiceClient->Send(*root);
+	PluginClient->AppServiceClient->Send(root);
 
 	Dirty = false;
 }

@@ -16,7 +16,7 @@
 #pragma warning (disable : 4800)
 #pragma warning (disable : 4668)
 
-#include "Nodos/AppAPI.h"
+#include "Nodos/AppHelpers.hpp"
 #include <uuid.h>
 #include "nosFlatBuffersCommon.h"
 #include "AppEvents_generated.h"
@@ -120,7 +120,7 @@ DECLARE_EVENT_TwoParams(FNOSClient, FNOSActorSpawnedDestroyed, AActor*, bool);
  */
 class FNOSClient;
 
-class NOSCLIENT_API NOSEventDelegates : public nos::app::IEventDelegates
+class NOSCLIENT_API NOSEventDelegates : public nos::app::AppEventDelegates
 {
 public:
 	virtual ~NOSEventDelegates() {}
@@ -174,18 +174,20 @@ private:
 	float FramesPerSecond = 0;
 };
 
-class NOSCLIENT_API FNodos
+class NOSCLIENT_API FNodos : public nos::app::IAppApiProcLoader
 {
 public:
-	static FString GetNodosSDKDir();
-	static bool Initialize();
-	static void Shutdown();
-	static nos::app::FN_MakeAppServiceClient* MakeAppServiceClient;
-	static nos::app::FN_ShutdownClient* ShutdownClient;
+	FString GetNodosSDKDir();
+	bool Initialize();
+	void Shutdown();
+	std::shared_ptr<nos::app::AppApi> Api;
+	ProcFuncPtr GetProcAddress(const char* name) const override;
 private:
 	// Nodos SDK DLL handle
-	static void* LibHandle;
+	void* LibHandle = nullptr;
 };
+
+extern FNodos GNodos;
 
 template <typename DelegateT>
 class Chain : public DelegateT
@@ -287,7 +289,7 @@ public:
 	TSharedPtr<NOSEventDelegates> EventDelegates = 0;
 
 	//To send events to Nodos and communication
-	nos::app::IAppServiceClient* AppServiceClient = nullptr;
+	std::unique_ptr<nos::app::AppServiceClient> AppServiceClient = nullptr;
 
 	//Task queue
 	TQueue<Task, EQueueMode::Mpsc> TaskQueue;
@@ -355,6 +357,6 @@ public:
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		NOSClient->AppServiceClient->Send(*root);
+		NOSClient->AppServiceClient->Send(root);
 	}
 };
