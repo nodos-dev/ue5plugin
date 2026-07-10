@@ -30,7 +30,9 @@
 #include "nosSysVulkan/nosVulkanSubsystem.h"
 #include "nosSysVulkan/ResourceShare_generated.h"
 
-#include "ID3D12DynamicRHI.h"
+#include "UObject/UObjectGlobals.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "NOSGPUBuffer.h"
 
 NOSResourceShareManager* NOSResourceShareManager::singleton;
 
