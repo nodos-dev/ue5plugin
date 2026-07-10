@@ -30,9 +30,10 @@
 #include "nosSysVulkan/nosVulkanSubsystem.h"
 #include "nosSysVulkan/ResourceShare_generated.h"
 
-#include "UObject/UObjectGlobals.h"
-#include "Engine/TextureRenderTarget2D.h"
 #include "NOSGPUBuffer.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "UObject/UObjectGlobals.h"
+#include "UObject/Package.h"
 
 NOSResourceShareManager* NOSResourceShareManager::singleton;
 
@@ -130,7 +131,7 @@ std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::Buffer>> CreateDest
 
 	auto newRTName = destName + FGuid::NewGuid().ToString();
 
-	UTextureRenderTarget2D* NewRenderTarget2D = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), *newRTName, RF_MarkAsRootSet);
+	UTextureRenderTarget2D* NewRenderTarget2D = NewObject<UTextureRenderTarget2D>((UObject*)GetTransientPackage(), (FName)*newRTName, (EObjectFlags)RF_MarkAsRootSet);
 	check(NewRenderTarget2D);
 	NewRenderTarget2D->Rename(*newRTName);
 	NewRenderTarget2D->RenderTargetFormat = sourceRT.RenderTargetFormat;
@@ -182,7 +183,7 @@ std::optional<std::pair<TSharedPtr<SharedResourceInfo>, nos::Buffer>> CreateDest
 		return std::nullopt;
 	}
 
-	UNOSGPUBuffer* SharedBuffer = NewObject<UNOSGPUBuffer>(GetTransientPackage(), *(DstName + FGuid::NewGuid().ToString()), RF_MarkAsRootSet);
+	UNOSGPUBuffer* SharedBuffer = NewObject<UNOSGPUBuffer>((UObject*)GetTransientPackage(), *(DstName + FGuid::NewGuid().ToString()), RF_MarkAsRootSet);
 	check(SharedBuffer);
 
 	// Initialize the buffer on the render thread
@@ -669,7 +670,7 @@ void NOSResourceShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNum
 			InputFence->Signal(UINT64_MAX);
 			OutputFence->Signal(UINT64_MAX);
 		}
-		FPlatformProcess::Sleep(0.2);
+		FPlatformProcess::Sleep(0.2f);
 	}
 	FrameCounter = 0;
 }
