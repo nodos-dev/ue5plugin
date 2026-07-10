@@ -3,7 +3,7 @@
 //Nodos plugin includes
 #include "NOSSceneTreeManager.h"
 #include "NOSClient.h"
-#include "NOSTextureShareManager.h"
+#include "NOSResourceShareManager.h"
 #include "NOSAssetManager.h"
 #include "NOSViewportManager.h"
 #include "ARenderTargetViewer.h"
@@ -24,6 +24,8 @@
 #include "Engine/LevelStreaming.h"
 #include "Engine/Blueprint.h"
 #include "Blueprint/UserWidget.h"
+#include "Nodos/UUID.hpp"
+#include "nosSysVulkan/ResourceShare_generated.h"
 
 DEFINE_LOG_CATEGORY(LogNOSSceneTreeManager);
 #define LOG(x) UE_LOG(LogNOSSceneTreeManager, Display, TEXT(x))
@@ -32,7 +34,7 @@ DEFINE_LOG_CATEGORY(LogNOSSceneTreeManager);
 
 IMPLEMENT_MODULE(FNOSSceneTreeManager, NOSSceneTreeManager)
 
-UWorld* FNOSSceneTreeManager::daWorld = nullptr;
+UWorld* FNOSSceneTreeManager::TheWorld = nullptr;
 TSet<FGuid> FNOSSceneTreeManager::PropertiesNeeded = {};
 
 static TAutoConsoleVariable<int32> CVarReloadLevelFrameCount(TEXT("Nodos.ReloadFrameCount"), 10, TEXT("Reload frame count"));
@@ -62,10 +64,10 @@ void FNOSSceneTreeManager::OnMapChange(uint32 MapFlags)
 {
 	FString WorldName = GEditor->GetEditorWorldContext().World()->GetMapName();
 	LOGF("OnMapChange with editor world contexts world %s", *WorldName);
-	daWorld = GEditor ? GEditor->GetEditorWorldContext().World() : GEngine->GetCurrentPlayWorld();
+	TheWorld = GEditor ? GEditor->GetEditorWorldContext().World() : GEngine->GetCurrentPlayWorld();
 	if (!GEngine->GameViewport || !GEngine->GameViewport->IsStatEnabled("FPS"))
 	{ 
-		GEngine->Exec(daWorld, TEXT("Stat FPS"));
+		GEngine->Exec(TheWorld, TEXT("Stat FPS"));
 	}
 	RescanScene();
 	SendNodeUpdate(FNOSClient::NodeId, true);
@@ -123,21 +125,21 @@ void FNOSSceneTreeManager::OnBeginFrame()
 	{
 		ToggleExecutionStateToSynced = false;
 		ExecutionState = nos::app::ExecutionState::SYNCED;
-		if (NOSTextureShareManager::GetInstance()->SwitchStateToSynced())
+		if (NOSResourceShareManager::GetInstance()->SwitchStateToSynced())
 		{
 			SendSyncSemaphores(false);
 		}
 	}
 	
 	NOSPropertyManager.OnBeginFrame();
-	NOSTextureShareManager::GetInstance()->OnBeginFrame();
+	NOSResourceShareManager::GetInstance()->OnBeginFrame();
 }
 
 void FNOSSceneTreeManager::OnEndFrame()
 {
 	NOSPropertyManager.OnEndFrame();
-	auto frameCount = NOSTextureShareManager::GetInstance()->FrameCounter;
-	NOSTextureShareManager::GetInstance()->OnEndFrame();
+	auto frameCount = NOSResourceShareManager::GetInstance()->FrameCounter;
+	NOSResourceShareManager::GetInstance()->OnEndFrame();
 
 
 	flatbuffers::FlatBufferBuilder fb;
@@ -191,7 +193,7 @@ void FNOSSceneTreeManager::OnEndFrame()
 	fb.Finish(offset);
 	auto buf = fb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	NOSClient->AppServiceClient->Send(root);
 }
 
 void FNOSSceneTreeManager::StartupModule()
@@ -300,10 +302,12 @@ void FNOSSceneTreeManager::StartupModule()
 				alwaysUpdateOnActorSpawnData.push_back(AlwaysUpdateOnActorSpawns ? 1 : 0);
 				std::vector<uint8_t> showHiddenActorsData;
 				showHiddenActorsData.push_back(ShowHiddenActorsOnNodos ? 1 : 0);
+				auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+				std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
 				std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&alwaysUpdateId, TCHAR_TO_ANSI(TEXT("Always Update Scene Outliner")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", 0, &alwaysUpdateOnActorSpawnData, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&alwaysUpdateId, TCHAR_TO_ANSI(TEXT("Always Update Scene Outliner")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &alwaysUpdateOnActorSpawnData, 0, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 					"Update scene outliner when an actor is spawned instead of waiting for refreshing.\nDecreases performance for dynamic scenes."),
-					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&showHiddenActorsId, TCHAR_TO_ANSI(TEXT("Show Hidden Actors")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", 0, &showHiddenActorsData, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+					nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&showHiddenActorsId, TCHAR_TO_ANSI(TEXT("Show Hidden Actors")), TCHAR_TO_ANSI(TEXT("bool")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, 0, &showHiddenActorsData, 0, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
 					"Show hidden Unreal actors on Nodos Scene Outliner")
 				};
 				return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Refresh Scene Outliner", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control"
@@ -338,9 +342,13 @@ void FNOSSceneTreeManager::StartupModule()
 			std::string empty = "None";
 			auto data = std::vector<uint8_t>(empty.begin(), empty.end());
 			data.push_back(0);
-			
-			std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Actor List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_ACTOR_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin),
+
+			auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+			std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
+			auto visualizerOffset = nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_ACTOR_LIST")));
+			auto visualizers = std::vector{ visualizerOffset };
+			std::vector spawnPins = {
+				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Actor List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, &visualizers, &data, 0, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin),
 			};
 			FillSpawnActorFunctionTransformPins(fbb, spawnPins, PinIds);
 			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Actor", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
@@ -383,9 +391,13 @@ void FNOSSceneTreeManager::StartupModule()
 			std::string empty = "None";
 			auto data = std::vector<uint8_t>(empty.begin(), empty.end());
 			data.push_back(0);
-			
-			std::vector<flatbuffers::Offset<nos::fb::Pin>> spawnPins = {
-				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Render Target List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, "UE PROPERTY", nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_RENDER_TARGET_LIST"))), &data, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  nos::fb::PinContents::JobPin),
+
+			auto uePinCategoryEntry = nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, "UE PROPERTY");
+			std::vector<decltype(uePinCategoryEntry)> metadataEntries = { uePinCategoryEntry };
+			auto visualizerOffset = nos::fb::CreateVisualizerDirect(fbb, nos::fb::VisualizerType::COMBO_BOX, TCHAR_TO_UTF8(*PrefixStringList("UE5_RENDER_TARGET_LIST")));
+			auto visualizers = std::vector{ visualizerOffset };
+			std::vector spawnPins = {
+				nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&PinIds.ActorPinId, TCHAR_TO_ANSI(TEXT("Render Target List")), TCHAR_TO_ANSI(TEXT("string")), nos::fb::ShowAs::PROPERTY, nos::fb::CanShowAs::PROPERTY_ONLY, &visualizers, &data, 0, 0, 0, 0, 0, 0, 0, 0, &metadataEntries, 0,  nos::fb::PinContents::JobPin),
 			};
 			FillSpawnActorFunctionTransformPins(fbb, spawnPins, PinIds);
 			return nos::fb::CreateNodeDirect(fbb, (nos::fb::UUID*)&funcid, "Spawn Render Target Viewer Actor", "UE5.UE5", true, &spawnPins, 0, nos::fb::NodeContents::Job, nos::fb::CreateJob(fbb).Union(), TCHAR_TO_ANSI(*FNOSClient::AppKey), 0, "Control");
@@ -456,12 +468,10 @@ bool FNOSSceneTreeManager::Tick(float dt)
 
 bool FNOSSceneTreeManager::CheckNewLevels(float dt)
 {
-	if (!IsValid(daWorld))
+	if (!IsValid(TheWorld))
 		return true;
 
-	bool backupAlwaysUpdateOnActorSpawns = AlwaysUpdateOnActorSpawns;
-	AlwaysUpdateOnActorSpawns = true;
-	auto& streamingLevels = daWorld->GetStreamingLevels();
+	auto& streamingLevels = TheWorld->GetStreamingLevels();
 	for (auto* level : streamingLevels)
 	{
 		auto loadedLevel = level->GetLoadedLevel();
@@ -476,7 +486,6 @@ bool FNOSSceneTreeManager::CheckNewLevels(float dt)
 			AlreadyLoadedStreamingLevels.Add(loadedLevel);
 		}
 	}
-	AlwaysUpdateOnActorSpawns = backupAlwaysUpdateOnActorSpawns;
 	return true;
 }
 
@@ -486,6 +495,28 @@ void FNOSSceneTreeManager::OnNOSNodeSelected(nos::fb::UUID const& nodeId)
 	if(auto node = SceneTree.GetNode(id))
 	{
 		PopulateNodeAndDirectDescendants(node);
+	}
+}
+
+void FNOSSceneTreeManager::LoadNodesOnPath(FString NodePath)
+{
+	TArray<FString> NodeNames;
+	NodePath.ParseIntoArray(NodeNames, TEXT("/"));
+
+	auto CurrentNode = SceneTree.Root;
+	for(auto nodeName : NodeNames)
+	{
+		//find node from the children of the current node
+		for(auto child : CurrentNode->Children)
+		{
+			if(child && child->Name == nodeName)
+			{
+				LOGF("Populating node named %s", *child->Name);
+				PopulateNodeAndDirectDescendants(child.Get());
+				CurrentNode = child;
+				break;
+			}
+		}
 	}
 }
 
@@ -520,7 +551,7 @@ void FNOSSceneTreeManager::OnNOSConnectionClosed()
 	if(ExecutionState == nos::app::ExecutionState::SYNCED)
 	{
 		ExecutionState = nos::app::ExecutionState::IDLE;
-		NOSTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
+		NOSResourceShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
 	}
 }
 
@@ -571,8 +602,8 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 			{
 				auto& Portal = NOSPropertyManager.PortalPinsById.FindChecked(PortalId);
 				Portal.ShowAs = newShowAs;
-				NOSClient->AppServiceClient->SendPinShowAsChange(reinterpret_cast<nos::fb::UUID&>(PortalId), newShowAs);
-				NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
+				NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid(reinterpret_cast<nos::fb::UUID&>(PortalId)), newShowAs);
+				NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
 			}
 		}
 	}
@@ -588,8 +619,8 @@ void FNOSSceneTreeManager::OnNOSPinShowAsChanged(nos::fb::UUID const& Id, nos::f
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-			NOSClient->AppServiceClient->Send(*root);
-			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
+			NOSClient->AppServiceClient->Send(root);
+			NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), newShowAs);
 		}
 	}
 }
@@ -680,7 +711,7 @@ void FNOSSceneTreeManager::OnNOSContextMenuRequested(nos::app::AppContextMenuReq
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::app::AppContextMenuUpdate>(buf.data());
-			NOSClient->AppServiceClient->SendContextMenuUpdate(*root);
+			NOSClient->AppServiceClient->SendContextMenuUpdate(root);
 		}
 	}
 	else if(NOSPropertyManager.PortalPinsById.Contains(itemId))
@@ -694,7 +725,7 @@ void FNOSSceneTreeManager::OnNOSContextMenuRequested(nos::app::AppContextMenuReq
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::AppContextMenuUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendContextMenuUpdate(*root);
+		NOSClient->AppServiceClient->SendContextMenuUpdate(root);
 	}
 }
 
@@ -723,7 +754,7 @@ void FNOSSceneTreeManager::OnNOSContextMenuCommandFired(nos::app::AppContextMenu
 void FNOSSceneTreeManager::OnNOSNodeRemoved()
 {
 	NOSActorManager->ClearActors();
-	NOSTextureShareManager::GetInstance()->Reset();
+	NOSResourceShareManager::GetInstance()->Reset();
 	NOSClient->ReloadingLevel = CVarReloadLevelFrameCount.GetValueOnAnyThread();
 	ReloadCurrentMap();
 }
@@ -739,72 +770,17 @@ void FNOSSceneTreeManager::OnNOSStateChanged_GRPCThread(nos::app::ExecutionState
 		else if (newState == nos::app::ExecutionState::IDLE)
 		{
 			ExecutionState = newState;
-			NOSTextureShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
+			NOSResourceShareManager::GetInstance()->SwitchStateToIdle_GRPCThread(0);
 		}
 	}
 }
 
-void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& Paths, FGuid RequestId)
+void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& paths)
 {
-	const double OnNOSLoadNodesOnPathsStartTime = FPlatformTime::Seconds();
-
-	// Collect every node update produced while loading these paths into one batch, then flush it
-	// as a single BatchAppEvent. Each queued PartialNodeUpdate is identical to the one that would
-	// have been sent individually, in the same order, so the engine - which unwraps BatchAppEvent
-	// and dispatches each event in order - ends up in an identical state.
-	FNodeUpdateBatch Batch;
-
-	for(auto& Path : Paths)
+	for(auto path : paths)
 	{
-		TArray<FString> NodeNames;
-		Path.ParseIntoArray(NodeNames, TEXT("/"));
-
-		auto CurrentNode = SceneTree.Root;
-		for(auto NodeName : NodeNames)
-		{
-			//find node from the children of the current node
-			for(auto child : CurrentNode->Children)
-			{
-				if(child && child->Name == NodeName)
-				{
-					LOGF("Populating node named %s", *child->Name);
-					PopulateNodeAndDirectDescendants(child.Get(), &Batch);
-					CurrentNode = child;
-					break;
-				}
-			}
-		}
+		LoadNodesOnPath(path);
 	}
-
-	// Flush: wrap all queued updates in one BatchAppEvent and send it with a single Send().
-	if (!Batch.Events.empty() && NOSClient && NOSClient->IsConnected())
-	{
-		auto batchOffset = nos::app::CreateBatchAppEventDirect(Batch.Builder, &Batch.Events);
-		auto appEventOffset = nos::CreateAppEventOffset(Batch.Builder, batchOffset);
-		Batch.Builder.Finish(appEventOffset);
-		auto buf = Batch.Builder.Release();
-		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		NOSClient->AppServiceClient->Send(*root);
-	}
-
-	// Tell Nodos this LoadNodesOnPaths request is finished: every node update for it has now been
-	// sent. The instigator id lets the editor correlate this to its originating request.
-	if (NOSClient && NOSClient->IsConnected())
-	{
-		nos::fb::UUID instigator = *(nos::fb::UUID*)&RequestId;
-		flatbuffers::FlatBufferBuilder mb;
-		// Echo the request id back so the editor can correlate; omit it entirely if there was none.
-		auto appEvent = nos::app::CreateAppEvent(mb, nos::app::AppEventUnion::RequestCompleted,
-			nos::app::CreateRequestCompleted(mb).Union(), RequestId.IsValid() ? &instigator : nullptr);
-		mb.Finish(appEvent);
-		auto buf = mb.Release();
-		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-		NOSClient->AppServiceClient->Send(*root);
-	}
-
-	const double OnNOSLoadNodesOnPathsElapsedMs = (FPlatformTime::Seconds() - OnNOSLoadNodesOnPathsStartTime) * 1000.0;
-	UE_LOG(LogNOSSceneTreeManager, Display, TEXT("OnNOSLoadNodesOnPaths processed %d path(s), batched %d node update(s) into 1 event, in %.3f ms"),
-		Paths.Num(), (int32)Batch.Events.size(), OnNOSLoadNodesOnPathsElapsedMs);
 }
 
 void FNOSSceneTreeManager::OnPostWorldInit(UWorld* World, const UWorld::InitializationValues InitValues)
@@ -821,11 +797,11 @@ void FNOSSceneTreeManager::OnPostWorldInit(UWorld* World, const UWorld::Initiali
 
 	if(GEditor && !GEditor->IsPlaySessionInProgress())
 	{
-		daWorld = GEditor->GetEditorWorldContext().World();
+		TheWorld = GEditor->GetEditorWorldContext().World();
 	}
 	else
 	{
-		daWorld = GEngine->GetCurrentPlayWorld();
+		TheWorld = GEngine->GetCurrentPlayWorld();
 	}
 }
 
@@ -858,9 +834,6 @@ void FNOSSceneTreeManager::OnLevelRemovedFromWorld(ULevel* Level, UWorld* World)
 		return;
 	}
 
-	bool backupAlwaysUpdateOnActorSpawns = AlwaysUpdateOnActorSpawns;
-	AlwaysUpdateOnActorSpawns = true;
-
 	for (auto Actor : Level->Actors)
 	{
 		if (IsValid(Actor))
@@ -870,7 +843,6 @@ void FNOSSceneTreeManager::OnLevelRemovedFromWorld(ULevel* Level, UWorld* World)
 		}
 	}
 	AlreadyLoadedStreamingLevels.Remove(Level);
-	AlwaysUpdateOnActorSpawns = backupAlwaysUpdateOnActorSpawns;
 }
 
 
@@ -1117,12 +1089,12 @@ void FNOSSceneTreeManager::OnActorAttached(AActor* Actor, const AActor* ParentAc
 
 void FNOSSceneTreeManager::OnActorDetached(AActor* Actor, const AActor* ParentActor)
 {
-	if (!IsValid(daWorld))
+	if (!IsValid(TheWorld))
 		return;
 
 	LOG("Actor Detached");
 	
-	if(!FNOSClient::NodeId.IsValid() || !daWorld->ContainsActor(Actor) || !IsValid(Actor) || Actor->IsPendingKillPending())
+	if(!FNOSClient::NodeId.IsValid() || !TheWorld->ContainsActor(Actor) || !IsValid(Actor) || Actor->IsPendingKillPending())
 	{
 		return;
 	}
@@ -1167,7 +1139,7 @@ void FNOSSceneTreeManager::OnActorDetached(AActor* Actor, const AActor* ParentAc
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	}
 	else
 		ActorsToBeAdded.AddUnique(Actor);
@@ -1218,14 +1190,14 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 	fb1.Finish(offset);
 	auto buf = fb1.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	flatbuffers::FlatBufferBuilder fb3;
 	auto offset2 = nos::CreatePartialNodeUpdateDirect(fb3, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES);
 	fb3.Finish(offset2);
 	auto buf2 = fb3.Release();
 	auto root2 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf2.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root2);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root2);
 
 
 	std::vector<const nos::fb::Node*> nodesWithProperty;
@@ -1611,7 +1583,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			if (!nosProp)
 				continue;
 			nosProp->PinShowAs = update.pinShowAs;
-			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(nosProp, update.pinShowAs);
+			NOSResourceShareManager::GetInstance()->UpdatePinShowAs(nosProp, update.pinShowAs);
 			PropertiesNeeded.Add(nosProp->Id);
 		}
 
@@ -1837,7 +1809,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 		fb2.Finish(offset3);
 		auto buf3 = fb2.Release();
 		auto root3 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf3.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root3);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root3);
 	}
 	for (auto& Portal : NewPortals)
 	{
@@ -1850,7 +1822,7 @@ void FNOSSceneTreeManager::OnNOSNodeImported(nos::fb::Node const& appNode)
 			fb4.Finish(offset4);
 			auto buf4 = fb4.Release();
 			auto root4 = flatbuffers::GetRoot<nos::app::AppEvent>(buf4.data());
-			NOSClient->AppServiceClient->Send(*root4);
+			NOSClient->AppServiceClient->Send(root4);
 		}
 	}
 	//SendSyncSemaphores(true);
@@ -1870,7 +1842,12 @@ void FNOSSceneTreeManager::SetPropertyValue(FGuid pinId, void* newval, size_t si
 	{
 		return;
 	}
-	if (!NOSPropertyManager.PropertyToPortalPin.Contains(pinId))
+	bool bufferChanged = false;
+	if (nosprop->data.size() != size)
+		bufferChanged = true;
+	else if (memcmp(nosprop->data.data(), newval, size) != 0)
+		bufferChanged = true;
+	if (!NOSPropertyManager.PropertyToPortalPin.Contains(pinId) && bufferChanged)
 	{
 		NOSPropertyManager.CreatePortal(pinId, nos::fb::ShowAs::PROPERTY);
 	}	
@@ -1887,7 +1864,7 @@ void FNOSSceneTreeManager::ConnectViewportTexture()
 		auto nosprop = ViewportTextureProperty;
 		nosprop->ObjectPtr = viewport;
 
-		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(nosprop);
+		auto tex = NOSResourceShareManager::GetInstance()->AddResourcePin(nosprop);
 		nosprop->data = nos::Buffer::From(tex);
 	}
 }
@@ -1895,12 +1872,12 @@ void FNOSSceneTreeManager::ConnectViewportTexture()
 void FNOSSceneTreeManager::DisconnectViewportTexture()
 {
 	if (ViewportTextureProperty) {
-		NOSTextureShareManager::GetInstance()->TextureDestroyed(ViewportTextureProperty);
+		NOSResourceShareManager::GetInstance()->ResourceDestroyed(ViewportTextureProperty);
 		ViewportTextureProperty->ObjectPtr = nullptr;
-		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(ViewportTextureProperty);
+		auto tex = NOSResourceShareManager::GetInstance()->AddResourcePin(ViewportTextureProperty);
 		ViewportTextureProperty->data = nos::Buffer::From
 		(tex);
-		NOSTextureShareManager::GetInstance()->TextureDestroyed(ViewportTextureProperty);
+		NOSResourceShareManager::GetInstance()->ResourceDestroyed(ViewportTextureProperty);
 	}
 }
 #endif
@@ -1910,13 +1887,13 @@ void FNOSSceneTreeManager::RescanScene(bool reset)
 	if (reset)
 		Reset();
 
-	if (!IsValid(daWorld))
+	if (!IsValid(TheWorld))
 		return;
 
 	flatbuffers::FlatBufferBuilder fbb;
 	std::vector<flatbuffers::Offset<nos::fb::Node>> actorNodes;
 	TArray<AActor*> ActorsInScene;
-	for (TActorIterator< AActor > ActorItr(daWorld); ActorItr; ++ActorItr)
+	for (TActorIterator< AActor > ActorItr(TheWorld); ActorItr; ++ActorItr)
 	{
 		if (!IsActorDisplayable(*ActorItr, ShowHiddenActorsOnNodos))
 			continue;
@@ -2370,7 +2347,7 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 }
 
 
-void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending, FNodeUpdateBatch* OptBatch)
+void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending)
 {
 	LOGF("Sending node update to Nodos with id %s", *nodeId.ToString());
 	if (!NOSClient->IsConnected() || !nodeId.IsValid())
@@ -2378,48 +2355,29 @@ void FNOSSceneTreeManager::SendNodeUpdate(FGuid nodeId, bool bResetRootPins, boo
 		return;
 	}
 
-	// Batching path: serialize into the batch's shared builder and queue it, instead of sending
-	// now. The contained PartialNodeUpdate is identical to the one this function would send on
-	// its own; OnNOSLoadNodesOnPaths flushes the whole queue as a single BatchAppEvent.
-	if (OptBatch)
-	{
-		auto offset = BuildNodeUpdate(OptBatch->Builder, nodeId, bResetRootPins, filterPinsWhileSending);
-		if (!offset.IsNull())
-		{
-			OptBatch->Events.push_back(nos::CreateAppEventOffset(OptBatch->Builder, offset));
-		}
-		return;
-	}
-
-	flatbuffers::FlatBufferBuilder mb;
-	auto offset = BuildNodeUpdate(mb, nodeId, bResetRootPins, filterPinsWhileSending);
-	if (offset.IsNull())
-	{
-		return;
-	}
-	mb.Finish(offset);
-	auto buf = mb.Release();
-	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
-}
-
-flatbuffers::Offset<nos::PartialNodeUpdate> FNOSSceneTreeManager::BuildNodeUpdate(flatbuffers::FlatBufferBuilder& mb, FGuid nodeId, bool bResetRootPins, bool filterPinsWhileSending)
-{
 	if (nodeId == SceneTree.Root->Id)
 	{
 		if (!bResetRootPins)
 		{
+			flatbuffers::FlatBufferBuilder mb;
 			std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb, filterPinsWhileSending);
 			std::vector<flatbuffers::Offset<nos::fb::Node>> graphFunctions;
 			for (auto& [_, cfunc] : CustomFunctions)
 			{
 				graphFunctions.push_back(cfunc->Serialize(mb));
 			}
-
+		
 			std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SceneTree.Root->SerializeMetaData(mb);
-			return nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES, 0, 0, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+			auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, nos::ClearFlags::CLEAR_FUNCTIONS | nos::ClearFlags::CLEAR_NODES, 0, 0, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+			mb.Finish(offset);
+			auto buf = mb.Release();
+			auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
+			NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
+
+			return;
 		}
 
+		flatbuffers::FlatBufferBuilder mb = flatbuffers::FlatBufferBuilder();
 		std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes = SceneTree.Root->SerializeChildren(mb, filterPinsWhileSending);
 		std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 		for (auto& [_, property] : CustomProperties)
@@ -2436,17 +2394,24 @@ flatbuffers::Offset<nos::PartialNodeUpdate> FNOSSceneTreeManager::BuildNodeUpdat
 			graphFunctions.push_back(cfunc->Serialize(mb));
 
 		}
-
+		
 		std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SceneTree.Root->SerializeMetaData(mb);
-		return nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)(&nodeId), nos::ClearFlags::ANY & ~nos::ClearFlags::CLEAR_METADATA, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+		auto offset =  nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)(&nodeId), nos::ClearFlags::ANY & ~nos::ClearFlags::CLEAR_METADATA, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+		mb.Finish(offset);
+		auto buf = mb.Release();
+		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
+
+		return;
 	}
 	auto treeNode = SceneTree.GetNode(nodeId);
 	if (!(treeNode))
 	{
-		return flatbuffers::Offset<nos::PartialNodeUpdate>();
+		return;
 	}
 	auto wasSerializedWithFilteredPins = treeNode->WasSerializedWithFilteredPins;
 	treeNode->WasSerializedWithFilteredPins = filterPinsWhileSending;
+	flatbuffers::FlatBufferBuilder mb;
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins;
 	if (treeNode->GetAsActorNode())
 	{
@@ -2472,9 +2437,13 @@ flatbuffers::Offset<nos::PartialNodeUpdate> FNOSSceneTreeManager::BuildNodeUpdat
 		clearFlags |= nos::ClearFlags::CLEAR_NODES;
 	}
 	std::vector<flatbuffers::Offset<nos::fb::Node>> graphNodes;
-	if(shouldClearChildren)
+	if(shouldClearChildren) 
 		graphNodes = treeNode->SerializeChildren(mb, filterPinsWhileSending);
-	return nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, clearFlags, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&nodeId, clearFlags, 0, &graphPins, 0, &graphFunctions, 0, &graphNodes, 0, 0, &metadata);
+	mb.Finish(offset);
+	auto buf = mb.Release();
+	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendEngineFunctionUpdate()
@@ -2495,7 +2464,7 @@ void FNOSSceneTreeManager::SendEngineFunctionUpdate()
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendPinValueChanged(FGuid propertyId, std::vector<uint8> data)
@@ -2510,7 +2479,7 @@ void FNOSSceneTreeManager::SendPinValueChanged(FGuid propertyId, std::vector<uin
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::SetPinValue>(buf.data());
-	NOSClient->AppServiceClient->NotifyPinValueChanged(*root);
+	NOSClient->AppServiceClient->NotifyPinValueChanged(root);
 }
 
 void FNOSSceneTreeManager::SendPinUpdate()
@@ -2536,7 +2505,7 @@ void FNOSSceneTreeManager::SendPinUpdate()
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 }
 
@@ -2560,8 +2529,8 @@ void FNOSSceneTreeManager::RemovePortal(FGuid PortalId)
 	{
 		auto SourceProp = NOSPropertyManager.PropertiesById.FindRef(Portal.SourceId);
 		SourceProp->PinShowAs = nos::fb::ShowAs::PROPERTY;
-		NOSTextureShareManager::GetInstance()->UpdatePinShowAs(SourceProp.Get(), SourceProp->PinShowAs);
-		NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)SourceProp->Id, SourceProp->PinShowAs);
+		NOSResourceShareManager::GetInstance()->UpdatePinShowAs(SourceProp.Get(), SourceProp->PinShowAs);
+		NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)SourceProp->Id), SourceProp->PinShowAs);
 	}
 	flatbuffers::FlatBufferBuilder mb;
 	std::vector<nos::fb::UUID> pinsToDelete;
@@ -2571,7 +2540,7 @@ void FNOSSceneTreeManager::RemovePortal(FGuid PortalId)
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendPinAdded(FGuid NodeId, TSharedPtr<NOSProperty> const& nosprop)
@@ -2586,7 +2555,7 @@ void FNOSSceneTreeManager::SendPinAdded(FGuid NodeId, TSharedPtr<NOSProperty> co
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	return;
 }
@@ -2638,7 +2607,7 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 			mb.Finish(offset);
 			auto buf = mb.Release();
 			auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-			NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+			NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 		}
 	}
 	else
@@ -2664,7 +2633,7 @@ void FNOSSceneTreeManager::SendActorAdded(AActor* actor, FString spawnTag)
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	}
 }
@@ -2716,7 +2685,7 @@ void FNOSSceneTreeManager::CheckPins(TSet<UObject*>& RemovedObjects,
 
 void FNOSSceneTreeManager::Reset()
 {
-	NOSTextureShareManager::GetInstance()->Reset();
+	NOSResourceShareManager::GetInstance()->Reset();
 	ActorsToBeAdded.Empty();
 	SceneTree.Clear();
 	Pins.Empty();
@@ -2735,12 +2704,12 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 	RemoveProperties(node, propertiesToRemove);
 	TSet<FGuid> PropertiesWithPortals;
 	TSet<FGuid> PortalsToRemove;
-	auto texman = NOSTextureShareManager::GetInstance();
+	auto ResMan = NOSResourceShareManager::GetInstance();
 	for (auto prop : propertiesToRemove)
 	{
-		if(prop->TypeName == "nos.sys.vulkan.Texture")
+		if(prop->TypeName == "nos.sys.vulkan.Texture" || prop->TypeName == "nos.sys.vulkan.Buffer")
 		{
-			texman->TextureDestroyed(prop.Get());
+			ResMan->ResourceDestroyed(prop.Get());
 		}
 		if (!NOSPropertyManager.PropertyToPortalPin.Contains(prop->Id))
 		{
@@ -2805,7 +2774,7 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 		mb.Finish(offset);
 		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	}
 
 	flatbuffers::FlatBufferBuilder mb2;
@@ -2814,7 +2783,7 @@ void FNOSSceneTreeManager::SendActorNodeDeleted(ActorNode* node)
 	mb2.Finish(offset);
 	auto buf = mb2.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSSceneTreeManager::SendActorDeletedOnUpdate(AActor* actor)
@@ -2853,62 +2822,62 @@ void FNOSSceneTreeManager::SendParentChanged(FGuid Actor, FGuid ParentActor)
 	fb.Finish(offset);
 	auto buf = fb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	NOSClient->AppServiceClient->Send(root);
 }
 
-void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor, FNodeUpdateBatch* OptBatch)
+void FNOSSceneTreeManager::PopulateAllChildsOfActor(AActor* actor)
 {
 	LOGF("Populating all childs of %s", *actor->GetFName().ToString());
 	FGuid ActorId = actor->GetActorGuid();
-	PopulateAllChildsOfActor(ActorId, OptBatch);
+	PopulateAllChildsOfActor(ActorId);
 }
 
-void FNOSSceneTreeManager::PopulateNodeAndDirectDescendants(TreeNode* Node, FNodeUpdateBatch* OptBatch)
+void FNOSSceneTreeManager::PopulateNodeAndDirectDescendants(TreeNode* Node)
 {
 	LOGF("Populating all childs of node with id %s", *Node->Id.ToString());
-	PopulateAndSendNode(Node, false, OptBatch);
+	PopulateAndSendNode(Node, false);
 
 	for (auto ChildNode : Node->Children)
 	{
 		if(auto actorNode = ChildNode->GetAsActorNode())
 		{
-			PopulateAndSendNode(ChildNode.Get(), false, OptBatch);
+			PopulateAndSendNode(ChildNode.Get(), false);
 		}
 		else if(auto sceneComponentNode = ChildNode->GetAsSceneComponentNode())
 		{
 
-			PopulateAllChildsOfSceneComponentNode(sceneComponentNode, OptBatch);
+			PopulateAllChildsOfSceneComponentNode(sceneComponentNode);
 		}
 	}
 }
 
-void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending, FNodeUpdateBatch* OptBatch)
+void FNOSSceneTreeManager::PopulateAndSendNode(TreeNode* Node, bool filterPinsWhileSending)
 {
 	if (PopulateNode(Node) || (Node->WasSerializedWithFilteredPins && !filterPinsWhileSending))
 	{
-		SendNodeUpdate(Node->Id, true, filterPinsWhileSending, OptBatch);
+		SendNodeUpdate(Node->Id, true, filterPinsWhileSending);
 	}
 }
 
 void FNOSSceneTreeManager::ReloadCurrentMap()
 {
-	if (!IsValid(daWorld))
+	if (!IsValid(TheWorld))
 		return;
 
 #ifdef NOS_RELOAD_MAP_ON_EDIT_MODE
 	if(GEditor && !GEditor->IsPlaySessionInProgress())
 	{
-		const FString FileToOpen = FPackageName::LongPackageNameToFilename(daWorld->GetOutermost()->GetName(), FPackageName::GetMapPackageExtension());
+		const FString FileToOpen = FPackageName::LongPackageNameToFilename(TheWorld->GetOutermost()->GetName(), FPackageName::GetMapPackageExtension());
 		const bool bLoadAsTemplate = false;
 		const bool bShowProgress = true;
 		FEditorFileUtils::LoadMap(FileToOpen, bLoadAsTemplate, bShowProgress);
 	}
 	else
 #endif
-	UGameplayStatics::OpenLevel(daWorld, daWorld->GetFName());
+	UGameplayStatics::OpenLevel(TheWorld, TheWorld->GetFName());
 }
 
-void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId, FNodeUpdateBatch* OptBatch)
+void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId)
 {
 	LOGF("Populating all childs of actor with id %s", *ActorId.ToString());
 	auto ActorNode = SceneTree.GetNodeFromActorId(ActorId);
@@ -2919,23 +2888,23 @@ void FNOSSceneTreeManager::PopulateAllChildsOfActor(FGuid ActorId, FNodeUpdateBa
 	}
 	if (PopulateNode(ActorNode))
 	{
-		SendNodeUpdate(ActorNode->Id, true, false, OptBatch);
+		SendNodeUpdate(ActorNode->Id);
 	}
 
 	for (auto ChildNode : ActorNode->Children)
 	{
 		if (ChildNode->GetAsActorNode())
 		{
-			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get(), OptBatch);
+			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get());
 		}
 		else if (ChildNode->GetAsSceneComponentNode())
 		{
-			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode(), OptBatch);
+			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode());
 		}
 	}
 }
 
-void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode, FNodeUpdateBatch* OptBatch)
+void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode)
 {
 	if (!SceneComponentNode)
 	{
@@ -2944,18 +2913,18 @@ void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentN
 
 	if (PopulateNode(SceneComponentNode))
 	{
-		SendNodeUpdate(SceneComponentNode->Id, true, false, OptBatch);
+		SendNodeUpdate(SceneComponentNode->Id);
 	}
 
 	for (auto ChildNode : SceneComponentNode->Children)
 	{
 		if (ChildNode->GetAsActorNode())
 		{
-			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get(), OptBatch);
+			PopulateAllChildsOfActor(ChildNode->GetAsActorNode()->actor.Get());
 		}
 		else if (ChildNode->GetAsSceneComponentNode())
 		{
-			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode(), OptBatch);
+			PopulateAllChildsOfSceneComponentNode(ChildNode->GetAsSceneComponentNode());
 		}
 	}
 }
@@ -2966,7 +2935,7 @@ void FNOSSceneTreeManager::SendSyncSemaphores(bool RenewSemaphores)
 	{
 		UE_LOG(LogNOSSceneTreeManager, Error, TEXT("Sending sync semaphores with non-valid node Id, a deadlock might happen!"));
 	}
-	auto TextureShareManager = NOSTextureShareManager::GetInstance();
+	auto TextureShareManager = NOSResourceShareManager::GetInstance();
 	if(RenewSemaphores)
 	{
 		TextureShareManager->RenewSemaphores();
@@ -2974,13 +2943,20 @@ void FNOSSceneTreeManager::SendSyncSemaphores(bool RenewSemaphores)
 
 	uint64_t inputSemaphore = (uint64_t)TextureShareManager->SyncSemaphoresExportHandles.InputSemaphore;
 	uint64_t outputSemaphore = (uint64_t)TextureShareManager->SyncSemaphoresExportHandles.OutputSemaphore;
-
+	nos::sys::vulkan::TSetInputOutputSyncSemaphores syncSem;
+	syncSem.pid = FPlatformProcess::GetCurrentProcessId();
+	syncSem.input_semaphore = inputSemaphore;
+	syncSem.output_semaphore = outputSemaphore;
+	nos::sys::vulkan::TResourceShareMessage msg;
+	msg.message.Set(std::move(syncSem));
+	std::vector<uint8_t> syncSemaphoresMsgBuf = nos::Buffer::From(msg);
 	flatbuffers::FlatBufferBuilder mb;
-	auto offset = nos::CreateAppEventOffset(mb, nos::app::CreateSetSyncSemaphores(mb, (nos::fb::UUID*)&FNOSClient::NodeId, FPlatformProcess::GetCurrentProcessId(), inputSemaphore, outputSemaphore));
+	auto offset = nos::CreateAppEventOffset(
+		mb, nos::app::CreateCustomMessageDirect(mb, "nos.sys.vulkan", "nos.sys.vulkan.ResourceShareMessage", &syncSemaphoresMsgBuf));
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-	NOSClient->AppServiceClient->Send(*root);
+	NOSClient->AppServiceClient->Send(root);
 }
 
 struct PortalSourceContainerInfo
@@ -2996,7 +2972,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 {
 	LOG("Handling world change.");
 	SceneTree.Clear();
-	NOSTextureShareManager::GetInstance()->Reset();
+	NOSResourceShareManager::GetInstance()->Reset();
 
 	TArray<TTuple<PortalSourceContainerInfo, NOSPortal>> Portals;
 	TSet<FGuid> ActorsToRescan;
@@ -3054,7 +3030,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 	PinUpdates.clear();
 
 	NOSPropertyManager.Reset(false);
@@ -3068,7 +3044,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		PopulateAllChildsOfActor(ActorId);
 	}
 
-	for (TActorIterator< AActor > ActorItr(daWorld); ActorItr; ++ActorItr)
+	for (TActorIterator< AActor > ActorItr(TheWorld); ActorItr; ++ActorItr)
 	{
 		if(ActorsToRescan.Contains(ActorItr->GetActorGuid()))
 		{
@@ -3099,8 +3075,8 @@ void FNOSSceneTreeManager::HandleWorldChange()
 			}
 			portal.SourceId = NosProperty->Id;
 			NosProperty->PinShowAs = portal.ShowAs;
-			NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
-			NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NosProperty->Id, NosProperty->PinShowAs);
+			NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NosProperty.Get(), NosProperty->PinShowAs);
+			NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NosProperty->Id), NosProperty->PinShowAs);
 			NOSPropertyManager.PropertyToPortalPin.Add(NosProperty->Id, portal.Id);
 			PinUpdates.push_back(nos::CreatePartialPinUpdate(mbb, (nos::fb::UUID*)&portal.Id, (nos::fb::UUID*)&NosProperty->Id, nos::fb::CreatePinOrphanStateDirect(mbb, nos::fb::PinOrphanStateType::ACTIVE, "Object not found in the world")));
 		}
@@ -3116,7 +3092,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		mbb.Finish(offset1);
 		auto buf1 = mbb.Release();
 		auto root1 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf1.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root1);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root1);
 	}
 	if(!PinsToRemove.empty())
 	{
@@ -3125,7 +3101,7 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		mb2.Finish(offset2);
 		auto buf2 = mb2.Release();
 		auto root2 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf2.data());
-		NOSClient->AppServiceClient->SendPartialNodeUpdate(*root2);
+		NOSClient->AppServiceClient->SendPartialNodeUpdate(root2);
 	}
 
 	LOG("World change handled");
@@ -3133,11 +3109,11 @@ void FNOSSceneTreeManager::HandleWorldChange()
 
 UObject* FNOSSceneTreeManager::FindContainer(FGuid ActorId, FString ComponentName)
 {
-	if (!IsValid(daWorld))
+	if (!IsValid(TheWorld))
 		return nullptr;
 
 	UObject* Container = nullptr;
-	for (TActorIterator< AActor > ActorItr(daWorld); ActorItr; ++ActorItr)
+	for (TActorIterator< AActor > ActorItr(TheWorld); ActorItr; ++ActorItr)
 	{
 		if(ActorItr->GetActorGuid() == ActorId)
 		{
@@ -3199,26 +3175,26 @@ void FNOSSceneTreeManager::HandleBeginPIE(bool bIsSimulating)
 {
 	FString WorldName = GEditor->GetEditorWorldContext().World()->GetMapName();
 	WorldName = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World()->GetMapName();
-	FNOSSceneTreeManager::daWorld = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World();
+	FNOSSceneTreeManager::TheWorld = GEngine->GetWorldContextFromGameViewport(GEngine->GameViewport)->World();
 	
 	HandleWorldChange();
 
 	FOnActorSpawned::FDelegate ActorSpawnedDelegate = FOnActorSpawned::FDelegate::CreateRaw(this, &FNOSSceneTreeManager::OnActorSpawned);
 	FOnActorDestroyed::FDelegate ActorDestroyedDelegate = FOnActorDestroyed::FDelegate::CreateRaw(this, &FNOSSceneTreeManager::OnActorDestroyed);
-	FNOSSceneTreeManager::daWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
-	FNOSSceneTreeManager::daWorld->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
+	FNOSSceneTreeManager::TheWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
+	FNOSSceneTreeManager::TheWorld->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
 }
 
 void FNOSSceneTreeManager::HandleEndPIE(bool bIsSimulating)
 {
 	FString WorldName = GEditor->GetEditorWorldContext().World()->GetMapName();
-	FNOSSceneTreeManager::daWorld = GEditor ? GEditor->GetEditorWorldContext().World() : GEngine->GetCurrentPlayWorld();
+	FNOSSceneTreeManager::TheWorld = GEditor ? GEditor->GetEditorWorldContext().World() : GEngine->GetCurrentPlayWorld();
 	HandleWorldChange();
 
 	FOnActorSpawned::FDelegate ActorSpawnedDelegate = FOnActorSpawned::FDelegate::CreateRaw(this, &FNOSSceneTreeManager::OnActorSpawned);
 	FOnActorDestroyed::FDelegate ActorDestroyedDelegate = FOnActorDestroyed::FDelegate::CreateRaw(this, &FNOSSceneTreeManager::OnActorDestroyed);
-	FNOSSceneTreeManager::daWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
-	FNOSSceneTreeManager::daWorld->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
+	FNOSSceneTreeManager::TheWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
+	FNOSSceneTreeManager::TheWorld->AddOnActorDestroyedHandler(ActorDestroyedDelegate);
 }
 
 AActor* FNOSActorManager::GetParentTransformActor()
@@ -3237,10 +3213,10 @@ AActor* FNOSActorManager::GetRealityLinoManager()
 {
 	if(!RealityLinoManager.Get())
 	{
-		if (!FNOSSceneTreeManager::daWorld)
+		if (!FNOSSceneTreeManager::TheWorld)
 			return nullptr;
 
-		for (TActorIterator<AActor> It(FNOSSceneTreeManager::daWorld); It; ++It)
+		for (TActorIterator<AActor> It(FNOSSceneTreeManager::TheWorld); It; ++It)
 		{
 			AActor* Actor = *It;
 			if (Actor && Actor->GetActorLabel() == "RealityLinoManager")
@@ -3308,7 +3284,7 @@ AActor* FNOSActorManager::SpawnActor(FString SpawnTag, NOSSpawnActorParameters P
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	{
 		// auto portal location / rotation / scale if given
@@ -3376,7 +3352,7 @@ AActor* FNOSActorManager::SpawnUMGRenderManager(FString umgTag, UUserWidget* wid
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 
 	return UMGManager;
 }
@@ -3404,7 +3380,7 @@ void FNOSActorManager::ClearActors()
 	}
 
 	// When Play starts then actors are duplicated from Editor world into newly created PIE world.
-	if (!IsValid(FNOSSceneTreeManager::daWorld))
+	if (!IsValid(FNOSSceneTreeManager::TheWorld))
 	{
 		// Clear local structures.
 		ActorIds.Reset();
@@ -3413,7 +3389,7 @@ void FNOSActorManager::ClearActors()
 		return;
 	}
 
-	EWorldType::Type CurrentWorldType = FNOSSceneTreeManager::daWorld->WorldType.GetValue();
+	EWorldType::Type CurrentWorldType = FNOSSceneTreeManager::TheWorld->WorldType.GetValue();
 	if (CurrentWorldType == EWorldType::PIE)
 	{
 		// Actor was removed from PIE world. Remove him also from Editor world.
@@ -3544,8 +3520,8 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 		}
 	}
 
-	NOSTextureShareManager::GetInstance()->UpdatePinShowAs(NOSProperty.Get(), ShowAs);
-	NOSClient->AppServiceClient->SendPinShowAsChange((nos::fb::UUID&)NOSProperty->Id, ShowAs);
+	NOSResourceShareManager::GetInstance()->UpdatePinShowAs(NOSProperty.Get(), ShowAs);
+	NOSClient->AppServiceClient->SendPinShowAsChange(nos::uuid((nos::fb::UUID&)NOSProperty->Id), ShowAs);
 	
 	NOSPortal NewPortal{StringToFGuid(NOSProperty->Id.ToString()) ,PropertyId};
 	NewPortal.DisplayName = FString("");
@@ -3622,11 +3598,11 @@ void FNOSPropertyManager::CreatePortal(FGuid PropertyId, nos::fb::ShowAs ShowAs)
 	}
 	flatbuffers::FlatBufferBuilder mb;
 	std::vector<flatbuffers::Offset<nos::fb::Pin>> graphPins = { SerializePortal(mb, NewPortal, NOSProperty.Get()) };
-	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, &graphPins, 0, 0, 0, 0);
+	auto offset = nos::CreatePartialNodeUpdateDirect(mb, (nos::fb::UUID*)&FNOSClient::NodeId, nos::ClearFlags::NONE, 0, &graphPins);
 	mb.Finish(offset);
 	auto buf = mb.Release();
 	auto root = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf.data());
-	NOSClient->AppServiceClient->SendPartialNodeUpdate(*root);
+	NOSClient->AppServiceClient->SendPartialNodeUpdate(root);
 }
 
 void FNOSPropertyManager::CreatePortal(FProperty* uproperty, UObject* Container, nos::fb::ShowAs ShowAs)
@@ -3718,7 +3694,11 @@ void FNOSPropertyManager::ActorDeleted(FGuid DeletedActorId)
 flatbuffers::Offset<nos::fb::Pin> FNOSPropertyManager::SerializePortal(flatbuffers::FlatBufferBuilder& fbb, NOSPortal Portal, NOSProperty* SourceProperty)
 {
 	auto SerializedMetadata = SourceProperty->SerializeMetaData(fbb);
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.UniqueName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, SourceProperty->PinCanShowAs, TCHAR_TO_UTF8(*Portal.CategoryName), SourceProperty->SerializeVisualizer(fbb), &SourceProperty->data, 0, 0, 0, 0, 0, SourceProperty->ReadOnly, 0, false, &SerializedMetadata, 0, nos::fb::PinContents::PortalPin, nos::fb::CreatePortalPin(fbb, (nos::fb::UUID*)&Portal.SourceId).Union(), 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
+	auto visualizerOffset = SourceProperty->SerializeVisualizer(fbb);
+	std::vector<decltype(visualizerOffset)> visualizers;
+	if (visualizerOffset.o)
+		visualizers.push_back(visualizerOffset);
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Portal.Id, TCHAR_TO_UTF8(*Portal.UniqueName), TCHAR_TO_UTF8(*Portal.TypeName), Portal.ShowAs, SourceProperty->PinCanShowAs, &visualizers, &SourceProperty->data, 0, 0, 0, 0, 0, 0, SourceProperty->ReadOnly, false, &SerializedMetadata, 0, nos::fb::PinContents::PortalPin, nos::fb::CreatePortalPin(fbb, (nos::fb::UUID*)&Portal.SourceId).Union(), 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*SourceProperty->ToolTipText), TCHAR_TO_UTF8(*Portal.DisplayName));
 }
 
 void FNOSPropertyManager::Reset(bool ResetPortals)
@@ -3740,12 +3720,12 @@ void FNOSPropertyManager::OnBeginFrame()
 	{
 		constexpr float DEFAULT_DELTA_SECONDS = 1.0f / 60.0f;
 		float DeltaSeconds = 0.0f;
-		if (FNOSSceneTreeManager::daWorld)
-			DeltaSeconds = FNOSSceneTreeManager::daWorld->GetDeltaSeconds();
+		if (FNOSSceneTreeManager::TheWorld)
+			DeltaSeconds = FNOSSceneTreeManager::TheWorld->GetDeltaSeconds();
 		else
 			DeltaSeconds = DEFAULT_DELTA_SECONDS;
 		constexpr float MAX_FRAME_WAIT_MULTIPLIER = 3.0f;
-		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter, DeltaSeconds * MAX_FRAME_WAIT_MULTIPLIER);
+		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSResourceShareManager::GetInstance()->FrameCounter, DeltaSeconds * MAX_FRAME_WAIT_MULTIPLIER);
 
 		for (auto& [id, val] : executeInfo.PinValueUpdates)
 		{
@@ -3764,7 +3744,7 @@ void FNOSPropertyManager::OnBeginFrame()
 
 		if (portal.TypeName == "nos.sys.vulkan.Texture")
 		{
-			NOSTextureShareManager::GetInstance()->UpdateTexturePin(NosProperty.Get(), portal.ShowAs);
+			NOSResourceShareManager::GetInstance()->UpdateResourcePin(NosProperty.Get(), portal.ShowAs);
 			continue;
 		}
 	}

@@ -18,6 +18,8 @@ public class NOSDataStructures : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
+				"RHI",
+				"RenderCore"
 				}
 			);
 	}

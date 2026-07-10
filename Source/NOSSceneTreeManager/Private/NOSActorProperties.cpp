@@ -1,7 +1,7 @@
 // Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
 #include "NOSActorProperties.h"
-#include "NOSTextureShareManager.h"
+#include "NOSResourceShareManager.h"
 #include "EditorCategoryUtils.h"
 #include "ObjectEditorUtils.h"
 #include "NOSTrack.h"
@@ -10,7 +10,7 @@
 #include "NOSSceneTreeManager.h"
 #include "PropertyEditorModule.h"
 #include "Engine/Engine.h"
-#include <nosSysTrack/Track_generated.h>
+#include <nosTrack/Track_generated.h>
 #include "NOSLinoChannel.h"
 #include <lino_generated.h>
 
@@ -40,8 +40,13 @@ bool PropertyVisibleExp(FProperty* ueproperty)
 }
 
 NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString parentCategory, uint8* structPtr, NOSStructProperty* parentProperty)
+	: NOSProperty(FGuid::NewGuid(), container, uproperty, parentCategory, structPtr, parentProperty)
 {
-	Id = FGuid::NewGuid();
+}
+
+NOSProperty::NOSProperty(FGuid id, UObject* container, FProperty* uproperty, FString parentCategory, uint8* structPtr, NOSStructProperty* parentProperty)
+{
+	this->Id = id;
 
 	if (!container && !uproperty)
 		return;
@@ -66,7 +71,7 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		ObjectPtr = container;
 	}
 
-
+	
 	PropertyName = uproperty->GetFName().ToString();
 	if (container && container->IsA<UActorComponent>())
 	{
@@ -100,27 +105,27 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		MaxString = UIMaxString.IsEmpty() ? ClampMaxString : UIMaxString;
 		ToolTipText = metaData.Contains(NAME_ToolTip) ? metaData[NAME_ToolTip] : "";
 		EditConditionPropertyName = metaData.Contains(NAME_EditCondition) ? metaData[NAME_EditCondition] : "";
-		if (!EditConditionPropertyName.IsEmpty())
+		if(!EditConditionPropertyName.IsEmpty())
 		{
 			auto OwnerVariant = Property->GetOwnerVariant();
 			auto OwnerStruct = Property->GetOwnerStruct();
-			if (!OwnerStruct && OwnerVariant)
+			if(!OwnerStruct && OwnerVariant)
 			{
 				OwnerStruct = OwnerVariant.IsUObject() ? (UStruct*)OwnerVariant.ToUObject() : nullptr;
 			}
 			EditConditionProperty = FindFProperty<FProperty>(OwnerStruct, FName(EditConditionPropertyName));
 		}
-		if (metaData.Contains(NAME_HiddenByDefault))
+		if(metaData.Contains(NAME_HiddenByDefault))
 		{
 			nosMetaDataMap.Add(NosMetadataKeys::PinHidden, " ");
 		}
 
-		if (!metaData.Contains(NAME_NOSCanShowAsInput) && metaData.Contains(NAME_NOSCanShowAsOutput))
+		if(!metaData.Contains(NAME_NOSCanShowAsInput) && metaData.Contains(NAME_NOSCanShowAsOutput))
 		{
 			PinCanShowAs = nos::fb::CanShowAs::OUTPUT_PIN_OR_PROPERTY;
 		}
-
-		if (metaData.Contains(NAME_NOSCanShowAsInput) && !metaData.Contains(NAME_NOSCanShowAsOutput))
+		
+		if(metaData.Contains(NAME_NOSCanShowAsInput) && !metaData.Contains(NAME_NOSCanShowAsOutput))
 		{
 			PinCanShowAs = nos::fb::CanShowAs::INPUT_PIN_OR_PROPERTY;
 		}
@@ -137,7 +142,7 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		UIMaxString = "";
 	}
 	IsAdvanced = uproperty->HasAllPropertyFlags(CPF_AdvancedDisplay);
-
+	
 	// For properties inside a struct, add them to their own category unless they just take the name of the parent struct.  
 	// In that case push them to the parent category
 	FName PropertyCategoryName = FObjectEditorUtils::GetCategoryFName(Property);
@@ -165,20 +170,20 @@ NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString paren
 		DisplayName = parentProperty->DisplayName + "_" + DisplayName;
 	}
 
-	if (container)
+	if(container)
 	{
 		static const FName PropertyEditor("PropertyEditor");
 		FPropertyEditorModule& PropertyModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>(PropertyEditor);
 		TArray<TSharedPtr<FPropertySection>> Sections;
 		Sections = PropertyModule.FindSectionsForCategory(container->GetClass(), PropertyCategoryName);
-		for (auto section : Sections)
+		for(auto section : Sections)
 		{
 			FString tag = section->GetDisplayName().ToString();
 			auto& tagMetadataEntry = nosMetaDataMap.FindOrAdd("Tags");
 			tagMetadataEntry += tag + ",";
 			// UE_LOG(LogTemp, Warning, TEXT("The property %s is in section %s"), *DisplayName, *section->GetDisplayName().ToString());
 		}
-		if (!Sections.IsEmpty())
+		if(!Sections.IsEmpty())
 		{
 			nosMetaDataMap.FindOrAdd("Tags").LeftChopInline(1);
 		}
@@ -235,15 +240,15 @@ void NOSProperty::SetPropValue_Internal(void* val, size_t size, uint8* customCon
 		UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));
 		return; //TODO investigate why container is null
 	}
-
+	
 	SetProperty_InCont(container, val);
-
+	
 	MarkState();
 }
 
 void* NOSProperty::GetRawContainer()
 {
-	if (auto Object = GetRawObjectContainer())
+	if(auto Object = GetRawObjectContainer())
 	{
 		return Object;
 	}
@@ -311,7 +316,7 @@ void NOSTrackProperty::SetPropValue_Internal(void* val, size_t size, uint8* cust
 		UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));
 		return; //TODO investigate why container is null
 	}
-
+	
 	SetProperty_InCont(container, val);
 
 	MarkState();
@@ -319,14 +324,14 @@ void NOSTrackProperty::SetPropValue_Internal(void* val, size_t size, uint8* cust
 
 bool NOSTrackProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	std::vector<flatbuffers::Offset<nos::sys::track::Track>> TrackArray;
-	for (int i = 0; i < ArrayHelper.Num(); i++)
+	std::vector<flatbuffers::Offset<nos::track::Track>> TrackArray;
+	for(int i = 0; i < ArrayHelper.Num(); i++)
 	{
-		if (auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
 		{
 			FNOSTrack TrackData = *(FNOSTrack*)ElementPtr;
-
-			nos::sys::track::TTrack TempTrack = {};
+			
+			nos::track::TTrack TempTrack = {};
 			TempTrack.location = nos::fb::vec3(TrackData.location.X, TrackData.location.Y, TrackData.location.Z);
 			TempTrack.rotation = nos::fb::vec3(TrackData.rotation.X, TrackData.rotation.Y, TrackData.rotation.Z);
 			TempTrack.fov = TrackData.fov;
@@ -340,30 +345,30 @@ bool NOSTrackProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScript
 			Distortion.mutable_k1k2() = nos::fb::vec2(TrackData.k1, TrackData.k2);
 			Distortion.mutable_center_shift() = nos::fb::vec2(TrackData.center_shift.X, TrackData.center_shift.Y);
 			Distortion.mutate_distortion_scale(TrackData.distortion_scale);
-			auto offset = nos::sys::track::CreateTrack(fb, &TempTrack);
+			auto offset = nos::track::CreateTrack(fb, &TempTrack);
 			TrackArray.push_back(offset);
 		}
 	}
 	auto offset = fb.CreateVector(TrackArray).o;
 	//auto offset = fb.CreateVectorOfSortedTables(&TrackArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::sys::track::Track>>(offset));
-
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::track::Track>>(offset));
+	
 	return true;
 }
 
 void NOSTrackProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::sys::track::Track>>*)val;
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::track::Track>>*)val; 
 	int ct = vec->size();
 	ArrayHelper.Resize(ct);
-	for (int i = 0; i < ct; i++)
+	for(int i = 0; i < ct; i++)
 	{
 		ArrayHelper.ExpandForIndex(i);
 		auto track = vec->Get(i);
-		// auto track = flatbuffers::GetRoot<nos::sys::track::Track>(val);
+		// auto track = flatbuffers::GetRoot<nos::track::Track>(val);
 		FNOSTrack* TrackData = (FNOSTrack*)ArrayHelper.GetRawPtr(i);
 		*TrackData = {};
-		nos::sys::track::TTrack TTrack = {};
+		nos::track::TTrack TTrack = {};
 		track->UnPackTo(&TTrack);
 
 		TrackData->location = FVector(TTrack.location.x(), TTrack.location.y(), TTrack.location.z());
@@ -386,50 +391,50 @@ void NOSTrackProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHe
 
 void NOSTrackProperty::SetProperty_InCont(void* container, void* val)
 {
-	auto track = flatbuffers::GetRoot<nos::sys::track::Track>(val);
+	auto track = flatbuffers::GetRoot<nos::track::Track>(val);
 	FNOSTrack* TrackData = structprop->ContainerPtrToValuePtr<FNOSTrack>(container);
 	// TrackData.location = FVector(0);
 	// TrackData.rotation = FVector(0);
 	// TrackData.center_shift = FVector2d(0);
 	// TrackData.sensor_size = FVector2d(0);
 
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_LOCATION))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_LOCATION))
 	{
 		TrackData->location = FVector(track->location()->x(), track->location()->y(), track->location()->z());
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_ROTATION))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_ROTATION))
 	{
 		TrackData->rotation = FVector(track->rotation()->x(), track->rotation()->y(), track->rotation()->z());
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_FOV))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_FOV))
 	{
 		TrackData->fov = track->fov();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_FOCUS))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_FOCUS))
 	{
 		TrackData->focus_distance = track->focus_distance();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_ZOOM))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_ZOOM))
 	{
 		TrackData->zoom = track->zoom();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_RENDER_RATIO))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_RENDER_RATIO))
 	{
 		TrackData->render_ratio = track->render_ratio();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_SENSOR_SIZE))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_SENSOR_SIZE))
 	{
 		TrackData->sensor_size = FVector2D(track->sensor_size()->x(), track->sensor_size()->y());
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_PIXEL_ASPECT_RATIO))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_PIXEL_ASPECT_RATIO))
 	{
 		TrackData->pixel_aspect_ratio = track->pixel_aspect_ratio();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_NODAL_OFFSET))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_NODAL_OFFSET))
 	{
 		TrackData->nodal_offset = track->nodal_offset();
 	}
-	if (flatbuffers::IsFieldPresent(track, nos::sys::track::Track::VT_LENS_DISTORTION))
+	if (flatbuffers::IsFieldPresent(track, nos::track::Track::VT_LENS_DISTORTION))
 	{
 		auto distortion = track->lens_distortion();
 		TrackData->distortion_scale = distortion->distortion_scale();
@@ -449,63 +454,63 @@ void NOSTrackProperty::SetProperty_InCont(void* container, void* val)
 	//}
 }
 
-void NOSLinoChannelProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
-{
-	IsChanged = true;
+void NOSLinoChannelProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)  
+{  
+   IsChanged = true;  
 
-	void* container = nullptr;
-	if (customContainer) container = customContainer;
-	else if (ComponentContainer) container = ComponentContainer.Get();
-	else if (ActorContainer) container = ActorContainer.Get();
-	else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;
-	else if (StructPtr) container = StructPtr;
+   void* container = nullptr;  
+   if (customContainer) container = customContainer;  
+   else if (ComponentContainer) container = ComponentContainer.Get();  
+   else if (ActorContainer) container = ActorContainer.Get();  
+   else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;  
+   else if (StructPtr) container = StructPtr;  
 
-	if (!container)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));
-		return;
-	}
+   if (!container)  
+   {  
+       UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));  
+       return;  
+   }  
 
-	SetProperty_InCont(container, val);
-	MarkState();
-}
+   SetProperty_InCont(container, val);  
+   MarkState();  
+}  
 
-bool NOSLinoChannelProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
-{
-	std::vector<flatbuffers::Offset<nos::sys::lino::Channel>> LinoChannelArray;
-	for (int i = 0; i < ArrayHelper.Num(); i++)
-	{
-		if (auto ElementPtr = ArrayHelper.GetRawPtr(i))
-		{
-			FNOSLinoChannel LinoChannelData = *(FNOSLinoChannel*)ElementPtr;
-			nos::sys::lino::TChannel TempChannel;
-			TempChannel.name = std::string(TCHAR_TO_UTF8(*LinoChannelData.Name.ToString()));
-			TempChannel.size.mutate_x(LinoChannelData.Size.X);
-			TempChannel.size.mutate_y(LinoChannelData.Size.Y);
-			TempChannel.is_preview_channel = LinoChannelData.Preview;
+bool NOSLinoChannelProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)  
+{  
+   std::vector<flatbuffers::Offset<nos::sys::lino::Channel>> LinoChannelArray;  
+   for (int i = 0; i < ArrayHelper.Num(); i++)  
+   {  
+       if (auto ElementPtr = ArrayHelper.GetRawPtr(i))  
+       {  
+           FNOSLinoChannel LinoChannelData = *(FNOSLinoChannel*)ElementPtr;  
+		   nos::sys::lino::TChannel TempChannel;
+		   TempChannel.name = std::string(TCHAR_TO_UTF8(*LinoChannelData.Name.ToString()));
+		   TempChannel.size.mutate_x(LinoChannelData.Size.X);
+		   TempChannel.size.mutate_y(LinoChannelData.Size.Y);
+		   TempChannel.is_preview_channel = LinoChannelData.Preview;
 
-			auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
-			LinoChannelArray.push_back(offset);
-		}
-	}
-	auto offset = fb.CreateVector(LinoChannelArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::sys::lino::Channel>>(offset));
+           auto offset = nos::sys::lino::CreateChannel(fb, &TempChannel);
+           LinoChannelArray.push_back(offset);  
+       }  
+   }  
+   auto offset = fb.CreateVector(LinoChannelArray).o;  
+   fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::sys::lino::Channel>>(offset));
 
-	return true;
-}
+   return true;  
+}  
 
-void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
-{
-	auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::sys::lino::Channel>>*)val;
-	int ct = vec->size();
-	ArrayHelper.Resize(ct);
-	for (int i = 0; i < ct; i++)
-	{
-		ArrayHelper.ExpandForIndex(i);
-		auto channel = vec->Get(i);
+void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)  
+{  
+   auto vec = (flatbuffers::Vector<flatbuffers::Offset<nos::sys::lino::Channel>>*)val;
+   int ct = vec->size();  
+   ArrayHelper.Resize(ct);  
+   for (int i = 0; i < ct; i++)  
+   {  
+		ArrayHelper.ExpandForIndex(i);  
+		auto channel = vec->Get(i);  
 
-		FNOSLinoChannel* LinoChannelData = (FNOSLinoChannel*)ArrayHelper.GetRawPtr(i);
-		*LinoChannelData = {};
+		FNOSLinoChannel* LinoChannelData = (FNOSLinoChannel*)ArrayHelper.GetRawPtr(i);  
+		*LinoChannelData = {};  
 
 		nos::sys::lino::TChannel Channel;
 		channel->UnPackTo(&Channel);
@@ -518,26 +523,26 @@ void NOSLinoChannelProperty::SetArrayPropValues(void* val, size_t size, FScriptA
 
 		if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_IS_PREVIEW_CHANNEL))
 			LinoChannelData->Preview = Channel.is_preview_channel;
-	}
-}
+   }  
+}  
 
-void NOSLinoChannelProperty::SetProperty_InCont(void* container, void* val)
-{
-	auto channel = flatbuffers::GetRoot<nos::sys::lino::Channel>(val);
-	FNOSLinoChannel* LinoChannelData = structprop->ContainerPtrToValuePtr<FNOSLinoChannel>(container);
+void NOSLinoChannelProperty::SetProperty_InCont(void* container, void* val)  
+{  
+   auto channel = flatbuffers::GetRoot<nos::sys::lino::Channel>(val);
+   FNOSLinoChannel* LinoChannelData = structprop->ContainerPtrToValuePtr<FNOSLinoChannel>(container);  
 
-	if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_NAME))
-	{
-		LinoChannelData->Name = FName(UTF8_TO_TCHAR(channel->name()->c_str()));
-	}
-	if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
-	{
-		LinoChannelData->Size = FIntPoint(channel->size()->x(), channel->size()->y());
-	}
-	if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_IS_PREVIEW_CHANNEL))
-	{
-		LinoChannelData->Preview = channel->is_preview_channel();
-	}
+   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_NAME))
+   {
+       LinoChannelData->Name = FName(UTF8_TO_TCHAR(channel->name()->c_str()));
+   }  
+   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_SIZE))
+   {  
+	   LinoChannelData->Size = FIntPoint(channel->size()->x(), channel->size()->y());
+   }  
+   if (flatbuffers::IsFieldPresent(channel, nos::sys::lino::Channel::VT_IS_PREVIEW_CHANNEL))
+   {  
+	   LinoChannelData->Preview = channel->is_preview_channel();
+   }  
 }
 
 std::vector<uint8> NOSLinoChannelProperty::UpdatePinValue(uint8* customContainer)
@@ -585,7 +590,7 @@ std::vector<uint8> NOSTransformProperty::UpdatePinValue(uint8* customContainer)
 		TempTransform.mutable_position() = nos::fb::vec3d(TransformData.GetLocation().X, TransformData.GetLocation().Y, TransformData.GetLocation().Z);
 		TempTransform.mutable_scale() = nos::fb::vec3d(TransformData.GetScale3D().X, TransformData.GetScale3D().Y, TransformData.GetScale3D().Z);
 		TempTransform.mutable_rotation() = nos::fb::vec3d(TransformData.GetRotation().ToRotationVector().X, TransformData.GetRotation().ToRotationVector().Y, TransformData.GetRotation().ToRotationVector().Z);
-
+		
 		nos::Buffer buffer = nos::Buffer::From(TempTransform);
 		data = buffer;
 	}
@@ -608,7 +613,7 @@ void NOSTransformProperty::SetPropValue_Internal(void* val, size_t size, uint8* 
 		UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));
 		return; //TODO investigate why container is null
 	}
-
+	
 	SetProperty_InCont(container, val);
 
 	MarkState();
@@ -621,7 +626,7 @@ void NOSTransformProperty::SetProperty_InCont(void* container, void* val)
 
 	TransformData->SetLocation(FVector(transform.position().x(), transform.position().y(), transform.position().z()));
 	TransformData->SetScale3D(FVector(transform.scale().x(), transform.scale().y(), transform.scale().z()));
-
+	
 	FRotator rot(transform.rotation().y(), transform.rotation().z(), transform.rotation().x());
 	TransformData->SetRotation(rot.Quaternion());
 }
@@ -639,9 +644,9 @@ std::vector<uint8> NOSTrackProperty::UpdatePinValue(uint8* customContainer)
 	if (container)
 	{
 		FNOSTrack TrackData = *Property->ContainerPtrToValuePtr<FNOSTrack>(container);
-
+		
 		flatbuffers::FlatBufferBuilder fb;
-		nos::sys::track::TTrack TempTrack;
+		nos::track::TTrack TempTrack;
 		TempTrack.location = nos::fb::vec3(TrackData.location.X, TrackData.location.Y, TrackData.location.Z);
 		TempTrack.rotation = nos::fb::vec3(TrackData.rotation.X, TrackData.rotation.Y, TrackData.rotation.Z);
 		TempTrack.fov = TrackData.fov;
@@ -655,8 +660,8 @@ std::vector<uint8> NOSTrackProperty::UpdatePinValue(uint8* customContainer)
 		Distortion.mutable_k1k2() = nos::fb::vec2(TrackData.k1, TrackData.k2);
 		Distortion.mutable_center_shift() = nos::fb::vec2(TrackData.center_shift.X, TrackData.center_shift.Y);
 		Distortion.mutate_distortion_scale(TrackData.distortion_scale);
-
-		auto offset = nos::sys::track::CreateTrack(fb, &TempTrack);
+		
+		auto offset = nos::track::CreateTrack(fb, &TempTrack);
 		fb.Finish(offset);
 		nos::Buffer buffer = fb.Release();
 		data = buffer;
@@ -670,7 +675,7 @@ void NOSRotatorProperty::SetProperty_InCont(void* container, void* val)
 	double x = ((double*)val)[0];
 	double y = ((double*)val)[1];
 	double z = ((double*)val)[2];
-	FRotator rotator = FRotator(y, z, x);
+	FRotator rotator = FRotator(y,z,x);
 	structprop->CopyCompleteValue(structprop->ContainerPtrToValuePtr<void>(container), &rotator);
 }
 
@@ -686,7 +691,7 @@ std::vector<uint8> NOSColorProperty::UpdatePinValue(uint8* customContainer)
 	if (container)
 	{
 		FColor* val = (FColor*)Property->ContainerPtrToValuePtr<void>(container);
-		nos::fb::vec4u8 cl = { val->R, val->G, val->B, val->A };
+		nos::fb::vec4u8 cl = {val->R, val->G, val->B, val->A};
 		memcpy(data.data(), &cl, data.size());
 	}
 	return data;
@@ -696,12 +701,12 @@ std::vector<uint8> NOSColorProperty::UpdatePinValue(uint8* customContainer)
 bool NOSColorProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
 {
 	fb.StartVector(ArrayHelper.Num(), sizeof(FColor), 1);
-	for (int i = ArrayHelper.Num() - 1; i >= 0; i--)
+	for(int i = ArrayHelper.Num()-1; i >= 0; i--)
 	{
-		if (auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
 		{
 			FColor* val = (FColor*)ElementPtr;
-			nos::fb::vec4u8 cl = { val->R, val->G, val->B, val->A };
+			nos::fb::vec4u8 cl = {val->R, val->G, val->B, val->A};
 			fb.PushBytes((uint8_t*)&cl, sizeof(FColor));
 		}
 	}
@@ -712,10 +717,10 @@ bool NOSColorProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScript
 
 void NOSColorProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	auto vec = (flatbuffers::Vector<uint8_t>*)val;
+	auto vec = (flatbuffers::Vector<uint8_t>*)val; 
 	int ct = vec->size();
 	ArrayHelper.Resize(ct);
-	for (int i = 0; i < ct; i++)
+	for(int i = 0; i < ct; i++)
 	{
 		ArrayHelper.ExpandForIndex(i);
 		uint8_t* el = vec->data() + (i * Property->GetElementSize());
@@ -782,11 +787,25 @@ flatbuffers::Offset<nos::fb::Pin> NOSProperty::Serialize(flatbuffers::FlatBuffer
 	if (TypeName == nos::Generic::GetFullyQualifiedName() || TypeName.size() < 1)
 	{
 		ensureMsgf(false, TEXT("Property %s cannot be serialized!"), *PropertyName);
-		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(), nos::fb::ShowAs::PROPERTY, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, 0, 0, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN, TCHAR_TO_UTF8(TEXT("Unknown type!"))), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+		return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), nos::Generic::GetFullyQualifiedName(),
+		                                nos::fb::ShowAs::PROPERTY, PinCanShowAs, 0, &data, 0, 0, 0, 0, &default_val, 0, ReadOnly, transient,
+		                                &metadata, 0, nos::fb::PinContents::JobPin, 0,
+		                                nos::fb::CreatePinOrphanStateDirect(fbb, nos::fb::PinOrphanStateType::ORPHAN,
+		                                                                    TCHAR_TO_UTF8(TEXT("Unknown type!"))),
+		                                nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText),
+		                                TCHAR_TO_UTF8(*displayName));
 	}
 	bool isTexture = TypeName == nos::sys::vulkan::Texture::GetFullyQualifiedName();
 	UpdateReadOnly();
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), 0, &data, 0, &min_val, &max_val, &default_val, 0, ReadOnly, IsAdvanced, transient, &metadata, isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)  /*If texture and can be output, then it should be live to let auto sync multi out work*/, nos::fb::PinContents::JobPin, 0, nos::fb::CreatePinOrphanStateDirect(fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE, TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&Id, TCHAR_TO_UTF8(*DisplayName), TypeName.c_str(), PinShowAs, PinCanShowAs, 0, &data, 0, 0,
+									&min_val, &max_val, &default_val, 0, ReadOnly, transient, &metadata,
+									isTexture && ((uint32_t)PinCanShowAs & (uint32_t)nos::fb::ShowAs::OUTPUT_PIN)
+									/*If texture and can be output, then it should be live to let auto sync multi out work*/,
+									nos::fb::PinContents::JobPin, 0,
+									nos::fb::CreatePinOrphanStateDirect(
+										fbb, IsOrphan ? nos::fb::PinOrphanStateType::ORPHAN : nos::fb::PinOrphanStateType::ACTIVE,
+										TCHAR_TO_UTF8(*OrphanMessage)), nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE,
+									TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*displayName));
 }
 
 bool NOSProperty::UpdateReadOnly()
@@ -825,6 +844,8 @@ std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> NOSProperty::SerializeM
 	{
 		metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, TCHAR_TO_UTF8(*key), TCHAR_TO_UTF8(*value)));
 	}
+	metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_CATEGORY, TCHAR_TO_UTF8(*CategoryName)));
+	metadata.push_back(nos::fb::CreateMetaDataEntryDirect(fbb, NOS_METADATA_KEY_PIN_ADVANCED_PROPERTY, IsAdvanced ? "true" : "false"));
 	return metadata;
 }
 
@@ -858,16 +879,16 @@ NOSStructProperty::NOSStructProperty(UObject* container, FStructProperty* uprope
 		auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, AProperty, CategoryName + "|" + DisplayName, StructInst, this);
 		if (nosprop)
 		{
-			if (nosprop->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
+			if(nosprop->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
 			{
 				auto ContainerPath = nosprop->nosMetaDataMap.Find(NosMetadataKeys::ContainerPath);
-				ContainerPath->InsertAt(0, structprop->GetNameCPP() + FString("/"));
+				ContainerPath->InsertAt(0, structprop->GetNameCPP() + FString("/") );
 			}
 			else
 			{
 				nosprop->nosMetaDataMap.Add(NosMetadataKeys::ContainerPath, structprop->GetNameCPP());
 			}
-
+			
 			nosprop->nosMetaDataMap.Remove(NosMetadataKeys::component);
 			nosprop->nosMetaDataMap.Remove(NosMetadataKeys::actorId);
 			FString ActorUniqueName;
@@ -886,19 +907,19 @@ NOSStructProperty::NOSStructProperty(UObject* container, FStructProperty* uprope
 				nosprop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
 			}
 
-
+			
 			FString PropertyPath = nosprop->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
 			FString ComponentPath = nosprop->nosMetaDataMap.FindRef(NosMetadataKeys::component);
 			FString IdStringKey = ActorUniqueName + ComponentPath + PropertyPath + nosprop->DisplayName;
 			nosprop->Id = StringToFGuid(IdStringKey);
 			childProperties.push_back(nosprop);
-
+			
 			for (auto it : nosprop->childProperties)
 			{
-				if (it->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
+				if(it->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
 				{
 					auto ContainerPath = it->nosMetaDataMap.Find(NosMetadataKeys::ContainerPath);
-					ContainerPath->InsertAt(0, structprop->GetNameCPP() + FString("/"));
+					ContainerPath->InsertAt(0, structprop->GetNameCPP() + FString("/") );
 				}
 				else
 				{
@@ -906,7 +927,7 @@ NOSStructProperty::NOSStructProperty(UObject* container, FStructProperty* uprope
 				}
 				it->nosMetaDataMap.Remove(NosMetadataKeys::component);
 				it->nosMetaDataMap.Remove(NosMetadataKeys::actorId);
-
+				
 				FString ActorUniqueNameChild;
 				if (auto component = Cast<USceneComponent>(container))
 				{
@@ -922,12 +943,12 @@ NOSStructProperty::NOSStructProperty(UObject* container, FStructProperty* uprope
 					ActorUniqueNameChild = actor->GetFName().ToString();
 					it->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
 				}
-
+				
 				FString PropertyPathChild = it->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
 				FString ComponentPathChild = it->nosMetaDataMap.FindRef(NosMetadataKeys::component);
 				FString IdStringKeyChild = ActorUniqueNameChild + ComponentPathChild + PropertyPathChild;
 				it->Id = StringToFGuid(IdStringKeyChild);
-
+				
 				childProperties.push_back(it);
 			}
 		}
@@ -949,7 +970,7 @@ NOSArrayProperty::NOSArrayProperty(UObject* container, FArrayProperty* ArrayProp
 	: NOSProperty(container, ArrayProperty, parentCategory, StructPtr, parentProperty), ArrayProperty(ArrayProperty), InnerProperty(InnerProperty)
 {
 	auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, InnerProperty, "", nullptr, nullptr);
-	if (nosprop)
+	if(nosprop)
 		TypeName = "[" + nosprop->TypeName + "]";
 }
 
@@ -965,13 +986,13 @@ void NOSArrayProperty::SetPropValue_Internal(void* val, size_t size, uint8* cust
 	if (container)
 	{
 		auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, InnerProperty, "", nullptr, nullptr);
-		if (!nosprop)
+		if(!nosprop)
 			return;
-
+		
 		FScriptArrayHelper_InContainer ArrayHelper(ArrayProperty, container);
 		nosprop->SetArrayPropValues(val, size, ArrayHelper);
 	}
-
+	
 	MarkState();
 	return;
 }
@@ -988,15 +1009,15 @@ std::vector<uint8> NOSArrayProperty::UpdatePinValue(uint8* customContainer)
 	if (container)
 	{
 		auto nosprop = NOSPropertyFactory::CreateProperty(nullptr, InnerProperty, "", nullptr, nullptr);
-		if (!nosprop)
+		if(!nosprop)
 			return data;
-
+		
 		FScriptArrayHelper_InContainer ArrayHelper(ArrayProperty, container);
 		flatbuffers::FlatBufferBuilder fb;
-		if (nosprop->CreateFbArray(fb, ArrayHelper))
+		if(nosprop->CreateFbArray(fb, ArrayHelper))
 		{
 			auto buf = fb.Release();
-			data = std::vector<uint8_t>{ flatbuffers::GetMutableRoot<uint8_t>(buf.data()), buf.data() + buf.size() };
+			data = std::vector<uint8_t>{flatbuffers::GetMutableRoot<uint8_t>(buf.data()), buf.data()+buf.size()};
 		}
 	}
 	return data;
@@ -1004,15 +1025,15 @@ std::vector<uint8> NOSArrayProperty::UpdatePinValue(uint8* customContainer)
 
 bool PropertyVisible(FProperty* ueproperty);
 
-NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uproperty, FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
-	: NOSProperty(container, uproperty, parentCategory, StructPtr, parentProperty), objectprop(uproperty)
+NOSObjectProperty::NOSObjectProperty(FGuid Id, UObject* container, FObjectProperty* uproperty, FString parentCategory, uint8* StructPtr, NOSStructProperty* parentProperty)
+	: NOSProperty(Id, container, uproperty, parentCategory, StructPtr, parentProperty), objectprop(uproperty)
 {
-	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
+	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()
+		|| objectprop->PropertyClass->IsChildOf<UNOSGPUBuffer>())
 	{
-		TypeName = "nos.sys.vulkan.Texture";
+		TypeName = objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>() ? "nos.sys.vulkan.Texture" : "nos.sys.vulkan.Buffer";
 		ReadOnly = true;
-		auto tex = NOSTextureShareManager::GetInstance()->AddTexturePin(this);
-		data = nos::Buffer::From(tex);
+		data = NOSResourceShareManager::GetInstance()->AddResourcePin(this);
 	}
 	else if (objectprop->PropertyClass->IsChildOf<UUserWidget>())
 	{
@@ -1022,47 +1043,17 @@ NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uprope
 			Container = ComponentContainer.Get();
 		}
 		auto Widget = Cast<UObject>(objectprop->GetObjectPropertyValue(objectprop->ContainerPtrToValuePtr<UUserWidget>(Container)));
-		if (!Widget)
+		if(!Widget)
 		{
 			data = std::vector<uint8_t>(1, 0);
 			TypeName = nos::Generic::GetFullyQualifiedName();
 			return;
 		}
-
+	
 		auto WidgetClass = Widget->GetClass();
 		FunctionContainerClass = WidgetClass;
-		auto RebindWidgetChildPropertyToOwner = [container](const TSharedPtr<NOSProperty>& PropertyIn)
-			{
-				if (!PropertyIn)
-				{
-					return;
-				}
 
-				FString ActorUniqueName;
-				FString ComponentPath;
-				PropertyIn->nosMetaDataMap.Remove(NosMetadataKeys::component);
-				PropertyIn->nosMetaDataMap.Remove(NosMetadataKeys::actorId);
-				if (auto component = Cast<USceneComponent>(container))
-				{
-					ComponentPath = component->GetFName().ToString();
-					PropertyIn->nosMetaDataMap.Add(NosMetadataKeys::component, ComponentPath);
-					if (auto actor = component->GetOwner())
-					{
-						ActorUniqueName = actor->GetFName().ToString();
-						PropertyIn->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
-					}
-				}
-				else if (auto actor = Cast<AActor>(container))
-				{
-					ActorUniqueName = actor->GetFName().ToString();
-					PropertyIn->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
-				}
-
-				FString PropertyPath = PropertyIn->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
-				FString ContainerPath = PropertyIn->nosMetaDataMap.FindRef(NosMetadataKeys::ContainerPath);
-				PropertyIn->Id = StringToFGuid(ActorUniqueName + ComponentPath + ContainerPath + PropertyPath);
-			};
-
+		
 		FProperty* WProperty = WidgetClass->PropertyLink;
 		parentCategory = parentCategory + "|" + Widget->GetFName().ToString();
 		while (WProperty != nullptr)
@@ -1077,38 +1068,69 @@ NOSObjectProperty::NOSObjectProperty(UObject* container, FObjectProperty* uprope
 				continue;
 			}
 			TSharedPtr<NOSProperty> nosprop = NOSPropertyFactory::CreateProperty(Widget, WProperty, parentCategory);
-			if (!nosprop)
-			{
-				WProperty = WProperty->PropertyLinkNext;
-				continue;
-			}
 
-			if (nosprop->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
+			if(nosprop->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
 			{
 				auto propPath = nosprop->nosMetaDataMap.Find(NosMetadataKeys::ContainerPath);
-				propPath->InsertAt(0, objectprop->GetFName().ToString() + FString("/"));
+				propPath->InsertAt(0, objectprop->GetFName().ToString() + FString("/") );
 			}
 			else
 			{
 				nosprop->nosMetaDataMap.Add(NosMetadataKeys::ContainerPath, objectprop->GetFName().ToString());
 			}
-			RebindWidgetChildPropertyToOwner(nosprop);
+			
+			
+			nosprop->nosMetaDataMap.Remove(NosMetadataKeys::component);
+			nosprop->nosMetaDataMap.Remove(NosMetadataKeys::actorId);
+			if (auto component = Cast<USceneComponent>(container))
+			{
+				nosprop->nosMetaDataMap.Add(NosMetadataKeys::component, component->GetFName().ToString());
+				if (auto actor = component->GetOwner())
+				{
+					nosprop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
+				}
+			}
+			else if (auto actor = Cast<AActor>(container))
+			{
+				nosprop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
+			}
+
+			
+			if (!nosprop)
+			{
+				WProperty = WProperty->PropertyLinkNext;
+				continue;
+			}
+			//RegisteredProperties.Add(nosprop->Id, nosprop);
 			childProperties.push_back(nosprop);
 
 			for (auto It : nosprop->childProperties)
 			{
-
-				if (It->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
+				
+				if(It->nosMetaDataMap.Contains(NosMetadataKeys::ContainerPath))
 				{
 					auto propPath = It->nosMetaDataMap.Find(NosMetadataKeys::ContainerPath);
-					propPath->InsertAt(0, objectprop->GetFName().ToString() + FString("/"));
+					propPath->InsertAt(0, objectprop->GetFName().ToString() + FString("/") );
 				}
 				else
 				{
 					It->nosMetaDataMap.Add(NosMetadataKeys::ContainerPath, objectprop->GetFName().ToString());
 				}
 				//RegisteredProperties.Add(it->Id, it);
-				RebindWidgetChildPropertyToOwner(It);
+				It->nosMetaDataMap.Remove(NosMetadataKeys::component);
+				It->nosMetaDataMap.Remove(NosMetadataKeys::actorId);
+				if (auto component = Cast<USceneComponent>(container))
+				{
+					It->nosMetaDataMap.Add(NosMetadataKeys::component, component->GetFName().ToString());
+					if (auto actor = component->GetOwner())
+					{
+						It->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
+					}
+				}
+				else if (auto actor = Cast<AActor>(container))
+				{
+					It->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
+				}
 				childProperties.push_back(It);
 			}
 
@@ -1129,24 +1151,19 @@ void NOSObjectProperty::SetPropValue_Internal(void* val, size_t size, uint8* cus
 {
 }
 
-std::vector<uint8> NOSObjectProperty::UpdatePinValue(uint8* customContainer)
-{
+std::vector<uint8> NOSObjectProperty::UpdatePinValue(uint8* customContainer) 
+{ 
 	UObject* container = GetRawObjectContainer();
 
 	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
 	{
-		if (auto updatedTexValue = NOSTextureShareManager::GetInstance()->GetUpdatedTexturePinValue(this))
+		if (auto updatedResourceValue = NOSResourceShareManager::GetInstance()->GetUpdatedResourcePinValue(this))
 		{
-			// data = nos::Buffer::From(texture);
-			flatbuffers::FlatBufferBuilder fb;
-			auto offset = nos::sys::vulkan::CreateTexture(fb, &*updatedTexValue);
-			fb.Finish(offset);
-			nos::Buffer buffer = fb.Release();
-			data = buffer;
+			data = *updatedResourceValue;
 		}
 	}
 
-	return std::vector<uint8>();
+	return std::vector<uint8>(); 
 }
 
 void NOSStringProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
@@ -1195,9 +1212,9 @@ std::vector<uint8> NOSStringProperty::UpdatePinValue(uint8* customContainer)
 bool NOSStringProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
 {
 	std::vector<flatbuffers::Offset<flatbuffers::String>> StringArray;
-	for (int i = 0; i < ArrayHelper.Num(); i++)
+	for(int i = 0; i < ArrayHelper.Num(); i++)
 	{
-		if (auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
 		{
 			FString val = *(FString*)ElementPtr;
 			char* result = TCHAR_TO_UTF8(*val);
@@ -1206,16 +1223,16 @@ bool NOSStringProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScrip
 		}
 	}
 	auto offset = fb.CreateVector(StringArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::sys::track::Track>>(offset));
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::track::Track>>(offset));
 	return true;
 }
 
 void NOSStringProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	auto vec = (flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*)val;
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*)val; 
 	int ct = vec->size();
 	ArrayHelper.Resize(ct);
-	for (int i = 0; i < ct; i++)
+	for(int i = 0; i < ct; i++)
 	{
 		ArrayHelper.ExpandForIndex(i);
 		auto string = vec->Get(i);
@@ -1243,9 +1260,9 @@ void NOSNameProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 	}
 	FString newval(UTF8_TO_TCHAR((char*)val));
 	nameprop->SetPropertyValue_InContainer(container, FName(newval));
-
+	
 	MarkState();
-
+	
 	return;
 }
 
@@ -1266,7 +1283,7 @@ std::vector<uint8> NOSNameProperty::UpdatePinValue(uint8* customContainer)
 	auto s = StringCast<UTF8CHAR>(*val);
 	data = std::vector<uint8_t>(s.Length() + 1, 0);
 	memcpy(data.data(), s.Get(), s.Length());
-
+	
 	return data;
 }
 
@@ -1280,7 +1297,7 @@ void NOSTextProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 	else if (ActorContainer) container = ActorContainer.Get();
 	else if (ObjectPtr && IsValid(ObjectPtr)) container = ObjectPtr;
 	else if (StructPtr) container = StructPtr;
-
+	
 	if (!container)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("The property %s has null container!"), *(DisplayName));
@@ -1318,9 +1335,9 @@ std::vector<uint8> NOSTextProperty::UpdatePinValue(uint8* customContainer)
 bool NOSTextProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptArrayHelper_InContainer& ArrayHelper)
 {
 	std::vector<flatbuffers::Offset<flatbuffers::String>> StringArray;
-	for (int i = 0; i < ArrayHelper.Num(); i++)
+	for(int i = 0; i < ArrayHelper.Num(); i++)
 	{
-		if (auto ElementPtr = ArrayHelper.GetRawPtr(i))
+		if(auto ElementPtr = ArrayHelper.GetRawPtr(i))
 		{
 			FString val = (*(FText*)ElementPtr).ToString();
 			char* result = TCHAR_TO_UTF8(*val);
@@ -1329,16 +1346,16 @@ bool NOSTextProperty::CreateFbArray(flatbuffers::FlatBufferBuilder& fb, FScriptA
 		}
 	}
 	auto offset = fb.CreateVector(StringArray).o;
-	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::sys::track::Track>>(offset));
+	fb.Finish(flatbuffers::Offset<flatbuffers::Vector<nos::track::Track>>(offset));
 	return true;
 }
 
 void NOSTextProperty::SetArrayPropValues(void* val, size_t size, FScriptArrayHelper_InContainer& ArrayHelper)
 {
-	auto vec = (flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*)val;
+	auto vec = (flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*)val; 
 	int ct = vec->size();
 	ArrayHelper.Resize(ct);
-	for (int i = 0; i < ct; i++)
+	for(int i = 0; i < ct; i++)
 	{
 		ArrayHelper.ExpandForIndex(i);
 		auto string = vec->Get(i);
@@ -1357,13 +1374,15 @@ flatbuffers::Offset<nos::fb::Pin> NOSEnumProperty::Serialize(flatbuffers::FlatBu
 {
 	std::vector<flatbuffers::Offset<nos::fb::MetaDataEntry>> metadata = SerializeMetaData(fbb);
 	DisplayName = ValidateName(DisplayName);
-	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&(NOSProperty::Id), TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_ANSI(TEXT("string")), PinShowAs, PinCanShowAs, TCHAR_TO_UTF8(*CategoryName), SerializeVisualizer(fbb), &data, 0, 0, 0, 0, 0, ReadOnly, IsAdvanced, transient, &metadata, 0, nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*Property->GetDisplayNameText().ToString()));
+	auto visualizerOffset = SerializeVisualizer(fbb);
+	auto visualizers = std::vector{ visualizerOffset };
+	return nos::fb::CreatePinDirect(fbb, (nos::fb::UUID*)&(NOSProperty::Id), TCHAR_TO_UTF8(*DisplayName), TCHAR_TO_ANSI(TEXT("string")), PinShowAs, PinCanShowAs, &visualizers, &data, 0, 0, 0, 0, 0, 0, ReadOnly, transient, &metadata, 0,  nos::fb::PinContents::JobPin, 0, 0, nos::fb::PinValueDisconnectBehavior::KEEP_LAST_VALUE, TCHAR_TO_UTF8(*ToolTipText), TCHAR_TO_UTF8(*Property->GetDisplayNameText().ToString()));
 }
 
 void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* customContainer)
 {
 	//TODO
-
+	
 	IsChanged = true;
 
 	void* container = nullptr;
@@ -1376,8 +1395,8 @@ void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 	if (container)
 	{
 		UEnum* EnumPtr = nullptr;
-		FNumericProperty* NumericProperty = nullptr;
-		if (const FEnumProperty* PropAsEnum = CastField<FEnumProperty>(Property))
+		FNumericProperty *NumericProperty = nullptr;
+		if(const FEnumProperty* PropAsEnum = CastField<FEnumProperty>(Property))
 		{
 			EnumPtr = PropAsEnum->GetEnum();
 			NumericProperty = PropAsEnum->GetUnderlyingProperty();
@@ -1388,7 +1407,7 @@ void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 			NumericProperty = CastField<FNumericProperty>(Property);
 		}
 
-		if (EnumPtr && NumericProperty)
+		if(EnumPtr && NumericProperty)
 		{
 			FString ValueString((char*)val);
 
@@ -1401,7 +1420,7 @@ void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 			}
 		}
 	}
-
+	
 	MarkState();
 
 	return;
@@ -1417,12 +1436,12 @@ std::vector<uint8> NOSEnumProperty::UpdatePinValue(uint8* customContainer)
 	else if (StructPtr) container = StructPtr;
 
 	FString val(" ");
-
+	
 	if (container)
 	{
 		UEnum* EnumPtr = nullptr;
-		FNumericProperty* NumericProperty = nullptr;
-		if (const FEnumProperty* PropAsEnum = CastField<FEnumProperty>(Property))
+		FNumericProperty *NumericProperty = nullptr;
+		if(const FEnumProperty* PropAsEnum = CastField<FEnumProperty>(Property))
 		{
 			EnumPtr = PropAsEnum->GetEnum();
 			NumericProperty = PropAsEnum->GetUnderlyingProperty();
@@ -1433,14 +1452,14 @@ std::vector<uint8> NOSEnumProperty::UpdatePinValue(uint8* customContainer)
 			NumericProperty = CastField<FNumericProperty>(Property);
 		}
 
-		if (EnumPtr && NumericProperty)
+		if(EnumPtr && NumericProperty)
 		{
 			uint8* PropData = Property->ContainerPtrToValuePtr<uint8>(container);
-			CurrentName = Enum->GetNameByValue(*PropData).ToString();
+			CurrentName = Enum->GetDisplayNameTextByValue(*PropData).ToString();
 			val = CurrentName;
 		}
 	}
-
+	
 	auto s = StringCast<ANSICHAR>(*val);
 	data = std::vector<uint8_t>(s.Length() + 1, 0);
 	memcpy(data.data(), s.Get(), s.Length());
@@ -1451,9 +1470,9 @@ std::vector<uint8> NOSEnumProperty::UpdatePinValue(uint8* customContainer)
 bool IsArrayPropertySupported(FArrayProperty* ArrayProperty)
 {
 	auto InnerProperty = ArrayProperty->Inner;
-	if (CastField<FNumericProperty>(InnerProperty))
+	if(CastField<FNumericProperty>(InnerProperty))
 		return true;
-	if (CastField<FStrProperty>(InnerProperty) || CastField<FTextProperty>(InnerProperty))
+	if(CastField<FStrProperty>(InnerProperty) || CastField<FTextProperty>(InnerProperty))
 		return true;
 	if (FStructProperty* structprop = CastField<FStructProperty>(InnerProperty))
 	{
@@ -1464,11 +1483,11 @@ bool IsArrayPropertySupported(FArrayProperty* ArrayProperty)
 			structprop->Struct == TBaseStructure<FLinearColor>::Get() ||
 			structprop->Struct == TBaseStructure<FNOSTrack>::Get() ||
 			structprop->Struct == TBaseStructure<FColor>::Get() ||
-			structprop->Struct == TBaseStructure<FNOSLinoChannel>::Get() ||
+			structprop->Struct == TBaseStructure<FNOSLinoChannel>::Get() || 
 			structprop->Struct == FNOSLinoChannel::StaticStruct())
 			return true;
 	}
-
+	
 	return false;
 }
 
@@ -1478,23 +1497,45 @@ FString FilterActorLabel(AActor* actor)
 }
 
 TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
-	FProperty* uproperty,
-	FString parentCategory,
-	uint8* StructPtr,
-	NOSStructProperty* parentProperty)
+                                                         FProperty* uproperty, 
+                                                         FString parentCategory, 
+                                                         uint8* StructPtr, 
+                                                         NOSStructProperty* parentProperty)
 {
 	TSharedPtr<NOSProperty> prop = nullptr;
 
 	//CAST THE PROPERTY ACCORDINGLY
 	uproperty->GetClass();
+	
+	FString ActorUniqueName;
+	FString PropertyPath = uproperty->GetPathName();
+	FString ComponentPath;
+	if (auto component = Cast<USceneComponent>(container))
+	{
+		ComponentPath = component->GetFName().ToString();
+		if (auto actor = component->GetOwner())
+		{
+			ActorUniqueName = actor->GetFName().ToString();
+		}
+	}
+	else if (auto actor = Cast<AActor>(container))
+	{
+		ActorUniqueName = actor->GetFName().ToString();
+	}
+	FString IdStringKey = ActorUniqueName + ComponentPath + PropertyPath;
+	
+	// FProperty* tryprop = FindFProperty<FProperty>(*uproperty->GetPathName());
+	//UE_LOG(LogNOSSceneTreeManager, Warning, TEXT("name of the prop before %s, found property name %s"),*uproperty->GetFName().ToString(),  *tryprop->GetFName().ToString());
 
-	if (CastField<FNumericProperty>(uproperty) && CastField<FNumericProperty>(uproperty)->IsEnum())
+	auto IdToUse = StringToFGuid(IdStringKey);
+	
+	if(CastField<FNumericProperty>(uproperty) && CastField<FNumericProperty>(uproperty)->IsEnum())
 	{
 		FNumericProperty* numericprop = CastField<FNumericProperty>(uproperty);
 		UEnum* uenum = numericprop->GetIntPropertyEnum();
 		prop = TSharedPtr<NOSProperty>(new NOSEnumProperty(container, nullptr, numericprop, uenum, parentCategory, StructPtr, parentProperty));
 	}
-	else if (FFloatProperty* floatprop = CastField<FFloatProperty>(uproperty))
+	else if (FFloatProperty* floatprop = CastField<FFloatProperty>(uproperty) ) 
 	{
 		prop = TSharedPtr<NOSProperty>(new NOSFloatProperty(container, floatprop, parentCategory, StructPtr, parentProperty));
 	}
@@ -1562,13 +1603,13 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		{
 			return nullptr;
 		}
-		prop = TSharedPtr<NOSProperty>(new NOSObjectProperty(container, objectprop, parentCategory, StructPtr, parentProperty));
+		prop = TSharedPtr<NOSProperty>(new NOSObjectProperty(IdToUse, container, objectprop, parentCategory, StructPtr, parentProperty));
 	}
 	else if (FArrayProperty* arrayprop = CastField<FArrayProperty>(uproperty))
 	{
-		if (container)
+		if(container)
 		{
-			if (IsArrayPropertySupported(arrayprop))
+			if(IsArrayPropertySupported(arrayprop))
 			{
 				prop = TSharedPtr<NOSProperty>(new NOSArrayProperty(container, arrayprop, arrayprop->Inner, parentCategory, StructPtr, parentProperty));
 			}
@@ -1652,7 +1693,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 				auto val = uproperty->ContainerPtrToValuePtr<void>(defobj);
 				if (prop->default_val.size() != uproperty->GetSize())
 				{
-					prop->default_val = std::vector<uint8>(uproperty->GetSize(), 0);
+					prop->default_val = std::vector<uint8>(uproperty->GetSize(), 0);	
 				}
 				memcpy(prop->default_val.data(), val, uproperty->GetSize());
 			}
@@ -1663,7 +1704,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 			auto defobj = actor->GetClass()->GetDefaultObject();
 			if (defobj)
 			{
-				auto val = !!(*uproperty->ContainerPtrToValuePtr<bool>(defobj));
+				auto val = !!( *uproperty->ContainerPtrToValuePtr<bool>(defobj) );
 				if (prop->default_val.size() != uproperty->GetSize())
 				{
 					prop->default_val = std::vector<uint8>(uproperty->GetSize(), 0);
@@ -1672,7 +1713,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 			}
 
 		}
-		//uproperty->ContainerPtrToValuePtrForDefaults()
+			//uproperty->ContainerPtrToValuePtrForDefaults()
 	}
 	else if (auto sceneComponent = Cast<USceneComponent>(container))
 	{
@@ -1694,7 +1735,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 			auto defobj = sceneComponent->GetClass()->GetDefaultObject();
 			if (defobj)
 			{
-				auto val = !!(*uproperty->ContainerPtrToValuePtr<bool>(defobj));
+				auto val = !!( *uproperty->ContainerPtrToValuePtr<bool>(defobj) );
 
 				if (prop->default_val.size() != uproperty->GetSize())
 				{
@@ -1707,9 +1748,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		//uproperty->ContainerPtrToValuePtrForDefaults()
 	}
 #endif
-
-	FString ActorUniqueName;
-
+	
 	prop->nosMetaDataMap.Add(NosMetadataKeys::PropertyPath, uproperty->GetPathName());
 	prop->nosMetaDataMap.Add(NosMetadataKeys::PropertyDisplayName, uproperty->GetDisplayNameText().ToString());
 	if (auto component = Cast<USceneComponent>(container))
@@ -1719,14 +1758,12 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		{
 			prop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
 			prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
-			ActorUniqueName = actor->GetFName().ToString();
 		}
 	}
 	else if (auto actor = Cast<AActor>(container))
 	{
 		prop->nosMetaDataMap.Add(NosMetadataKeys::actorId, actor->GetActorGuid().ToString());
 		prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
-		ActorUniqueName = actor->GetFName().ToString();
 	}
 
 	FString PropertyPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
@@ -1793,9 +1830,9 @@ bool NOSActorReference::UpdateActorPointer(UWorld* World)
 bool NOSActorReference::UpdateActualActorPointer()
 {
 	UWorld* World;
-	if (FNOSSceneTreeManager::daWorld)
+	if (FNOSSceneTreeManager::TheWorld)
 	{
-		World = FNOSSceneTreeManager::daWorld;
+		World = FNOSSceneTreeManager::TheWorld;
 	}
 	else
 	{

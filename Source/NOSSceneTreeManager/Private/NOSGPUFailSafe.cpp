@@ -1,7 +1,7 @@
 // Copyright MediaZ Teknoloji A.S. All Rights Reserved.
 
 #include "NOSGPUFailSafe.h"
-#include "NOSTextureShareManager.h"
+#include "NOSResourceShareManager.h"
 #include "NOSSceneTreeManager.h"
 
 NOSGPUFailSafeRunnable::NOSGPUFailSafeRunnable(ID3D12CommandQueue* _CmdQueue, ID3D12Device* Device) : CmdQueue(_CmdQueue)
@@ -35,7 +35,7 @@ uint32 NOSGPUFailSafeRunnable::Run()
 				UE_LOG(LogTemp, Error, TEXT("GPU 2 sec timeout, trying to recover shortly..."));
 				auto NOSSceneTreeManager = &FModuleManager::LoadModuleChecked<FNOSSceneTreeManager>("NOSSceneTreeManager");
 				NOSSceneTreeManager->ExecutionState = nos::app::ExecutionState::IDLE; 
-				auto TextureManager = NOSTextureShareManager::GetInstance();
+				auto TextureManager = NOSResourceShareManager::GetInstance();
 				if(TextureManager->InputFence && TextureManager->OutputFence)
 				{
 					TextureManager->ExecutionState = nos::app::ExecutionState::IDLE;
@@ -53,7 +53,7 @@ uint32 NOSGPUFailSafeRunnable::Run()
 					mb.Finish(offset);
 					auto buf = mb.Release();
 					auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
-					NOSSceneTreeManager->NOSClient->AppServiceClient->Send(*root);
+					NOSSceneTreeManager->NOSClient->AppServiceClient->Send(root);
 				}
 			}
 			else

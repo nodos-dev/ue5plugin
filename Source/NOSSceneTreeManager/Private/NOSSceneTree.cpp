@@ -75,7 +75,7 @@ TSharedPtr<ActorNode> NOSSceneTree::CreateActorNode(TreeNode* Parent, AActor* Ac
 	TSharedPtr<ActorNode> NewChild(new ActorNode);
 	NewChild->Parent = Parent;
 
-	if (FNOSSceneTreeManager::daWorld->PersistentLevel == Actor->GetLevel())
+	if (FNOSSceneTreeManager::TheWorld->PersistentLevel == Actor->GetLevel())
 	{
 		// TODO: Shouldn't this be actor->GetFName().ToString()?
 		NewChild->Name = Actor->GetActorLabel();
@@ -177,7 +177,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, 
 
 TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor, FName uniqueName)
 {
-	if (!IsValid(FNOSSceneTreeManager::daWorld))
+	if (!IsValid(FNOSSceneTreeManager::TheWorld))
 		return nullptr;
 
 	if (!actor)
@@ -214,7 +214,7 @@ TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(ActorNode* parent
 	FString ActorUniqueName = parent->actor->GetFName().ToString();
 	FString ComponentName = sceneComponent->GetFName().ToString();
 	newComponentNode->Name = sceneComponent->GetFName().ToString();
-	if (FNOSSceneTreeManager::daWorld->PersistentLevel == sceneComponent->GetComponentLevel())
+	if (FNOSSceneTreeManager::TheWorld->PersistentLevel == sceneComponent->GetComponentLevel())
 	{
 		newComponentNode->Id = StringToFGuid(ActorUniqueName + ComponentName);
 	}
@@ -243,7 +243,7 @@ TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(TSharedPtr<SceneC
 	newComponentNode->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
 	newComponentNode->sceneComponent = NOSComponentReference(sceneComponent);
 	newComponentNode->Name = sceneComponent->GetFName().ToString();
-	if (FNOSSceneTreeManager::daWorld->PersistentLevel == sceneComponent->GetComponentLevel())
+	if (FNOSSceneTreeManager::TheWorld->PersistentLevel == sceneComponent->GetComponentLevel())
 	{
 		FString ActorUniqueName;
 		if(auto actor = sceneComponent->GetAttachParentActor())

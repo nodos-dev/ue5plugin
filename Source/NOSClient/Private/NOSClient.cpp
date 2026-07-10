@@ -127,7 +127,7 @@ void FNodos::Shutdown()
 {
 	if (LibHandle)
 	{
-		Api = nullptr;
+		Api =  nullptr;
 		FPlatformProcess::FreeDllHandle(LibHandle);
 		LibHandle = nullptr;
 		LOG("Unloaded Nodos SDK dll successfully.");
@@ -162,88 +162,6 @@ TMap<FGuid, const nos::fb::Pin*> ParsePins(const nos::fb::Node* archive)
 		re.Add(*(FGuid*)pin->id()->bytes()->Data(), pin);
 	}
 	return re;
-}
-
-void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
-{
-	using namespace nos::app;
-	switch (event->event_type())
-	{
-	case EngineEventUnion::AppConnectedEvent: {
-		OnAppConnected();
-		break;
-	}
-	case EngineEventUnion::AppContextMenuRequest: {
-		OnContextMenuRequested(*event->event_as<AppContextMenuRequest>());
-		break;
-	}
-	case EngineEventUnion::AppContextMenuAction: {
-		OnContextMenuCommandFired(*event->event_as<AppContextMenuAction>());
-		break;
-	}
-	case EngineEventUnion::NodeRemovedEvent: {
-		OnNodeRemoved();
-		break;
-	}
-	case EngineEventUnion::AppPinShowAsChanged: {
-		auto const& pinShowAsChanged = event->event_as<AppPinShowAsChanged>();
-		OnPinShowAsChanged(*pinShowAsChanged->pin_id(), pinShowAsChanged->show_as());
-		break;
-	}
-	case EngineEventUnion::AppPinValueChanged: {
-		auto const& pinValueChanged = event->event_as<AppPinValueChanged>();
-		OnPinValueChanged(*pinValueChanged->pin_id(),
-			pinValueChanged->value()->Data(),
-			pinValueChanged->value()->size(),
-			pinValueChanged->reset(),
-			pinValueChanged->frame_number());
-		break;
-	}
-	case EngineEventUnion::FunctionCall: {
-		auto const& functionCall = event->event_as<nos::app::FunctionCall>();
-		OnFunctionCall(functionCall);
-		break;
-	}
-	case EngineEventUnion::NotifyNodeSelected: {
-		OnNodeSelected(*event->event_as<NotifyNodeSelected>()->node_id());
-		break;
-	}
-	case EngineEventUnion::NodeImported: {
-		OnNodeImported(*event->event_as<nos::app::NodeImported>()->node());
-		break;
-	}
-
-	case EngineEventUnion::StateChanged: {
-		OnStateChanged(event->event_as<nos::app::StateChanged>()->state());
-		break;
-	}
-	case EngineEventUnion::TerminationRequest: {
-		OnCloseApp();
-		break;
-	}
-	case EngineEventUnion::ConsoleCommand: {
-		OnConsoleCommand(event->event_as<nos::app::ConsoleCommand>());
-		break;
-	}
-	case EngineEventUnion::ConsoleAutoCompleteSuggestionRequest: {
-		OnConsoleAutoCompleteSuggestionRequest(event->event_as<nos::app::ConsoleAutoCompleteSuggestionRequest>());
-		break;
-	}
-	case EngineEventUnion::AppExecuteInfo: {
-		OnExecuteAppInfo(event->event_as<nos::app::AppExecuteInfo>());
-		break;
-	}
-	case EngineEventUnion::LoadNodesOnPaths: {
-		OnLoadNodesOnPaths(event->event_as<nos::app::LoadNodesOnPaths>(), event->request_id());
-		break;
-	}
-	case EngineEventUnion::AppExecuteStart: {
-		OnExecuteStart(event->event_as<nos::app::AppExecuteStart>());
-		break;
-	}
-	default:
-		break;
-	}
 }
 
 void NOSEventDelegates::OnAppConnected()
@@ -331,7 +249,7 @@ void NOSEventDelegates::OnConsoleAutoCompleteSuggestionRequest(
 		});
 }
 
-void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest, nos::fb::UUID const* requestId)
+void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest)
 {
 	LOG("LoadNodesOnPaths request from Nodos");
 	if (!PluginClient || !loadNodesOnPathsRequest->child_node_paths())
@@ -343,10 +261,9 @@ void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loa
 	{
 		Paths.Push(path->c_str());
 	}
-	FGuid RequestId = requestId ? *(FGuid*)requestId : FGuid();
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, Paths, RequestId]()
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, Paths]()
 		{
-			NOSClient->OnNOSLoadNodesOnPaths.Broadcast(Paths, RequestId);
+			NOSClient->OnNOSLoadNodesOnPaths.Broadcast(Paths);
 		});
 }
 
@@ -610,7 +527,6 @@ void FNOSClient::Disconnected_GrpcThread()
 	{
 		OnNOSConnectionClosed.Broadcast();
 	});
-
 }
 
 void FNOSClient::TryConnect()
