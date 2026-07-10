@@ -176,6 +176,7 @@ private:
 class NOSCLIENT_API FNodos : public nos::app::IAppApiProcLoader
 {
 public:
+	virtual ~FNodos() = default;
 	FString GetNodosSDKDir();
 	bool Initialize();
 	void Shutdown();

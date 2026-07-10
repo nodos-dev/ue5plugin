@@ -1766,10 +1766,7 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 		prop->nosMetaDataMap.Add(NosMetadataKeys::ActorDisplayName, FilterActorLabel(actor));
 	}
 
-	FString PropertyPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::PropertyPath);
-	FString ComponentPath = prop->nosMetaDataMap.FindRef(NosMetadataKeys::component);
-	FString IdStringKey = ActorUniqueName + ComponentPath + PropertyPath;
-	prop->Id = StringToFGuid(IdStringKey);
+	prop->Id = IdToUse;
 	prop->UpdateReadOnly();
 
 	return prop;
