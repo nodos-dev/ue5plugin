@@ -296,7 +296,7 @@ public:
 	void ToggleTwoWayBinding() { bTwoWayBindingEnabled = !bTwoWayBindingEnabled; }
 
 	//the world we interested in
-	static UWorld* TheWorld;
+	static UWorld* daWorld;
 
 	//all the properties registered 
 	TMap<FGuid, TSharedPtr<NOSProperty>> RegisteredProperties;
