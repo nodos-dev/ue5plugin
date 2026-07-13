@@ -3211,12 +3211,16 @@ AActor* FNOSActorManager::GetParentTransformActor()
 
 AActor* FNOSActorManager::GetRealityLinoManager()
 {
+	// TheWorld may not be set yet when this is called during app-node connect; fall back to the editor/play world.
+	UWorld* World = FNOSSceneTreeManager::TheWorld;
+	if (!World)
+		World = GEditor ? GEditor->GetEditorWorldContext().World() : (GEngine ? GEngine->GetCurrentPlayWorld() : nullptr);
+	if (!World)
+		return nullptr;
+
 	if(!RealityLinoManager.Get())
 	{
-		if (!FNOSSceneTreeManager::TheWorld)
-			return nullptr;
-
-		for (TActorIterator<AActor> It(FNOSSceneTreeManager::TheWorld); It; ++It)
+		for (TActorIterator<AActor> It(World); It; ++It)
 		{
 			AActor* Actor = *It;
 			if (Actor && Actor->GetActorLabel() == "RealityLinoManager")
@@ -3227,7 +3231,10 @@ AActor* FNOSActorManager::GetRealityLinoManager()
 	}
 	if (!RealityLinoManager.Get())
 	{
-		RealityLinoManager = NOSActorReference(SpawnActor("RealityLinoManager"));
+		AActor* Spawned = SpawnActor("RealityLinoManager");
+		if (!Spawned)
+			return nullptr;
+		RealityLinoManager = NOSActorReference(Spawned);
 		RealityLinoManager->GetRootComponent()->SetMobility(EComponentMobility::Static);
 	}
 
