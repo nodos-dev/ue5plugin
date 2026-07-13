@@ -1414,7 +1414,7 @@ void NOSEnumProperty::SetPropValue_Internal(void* val, size_t size, uint8* custo
 			auto result = NameMap.Find(ValueString);
 			if (result != nullptr)
 			{
-				int64 Value = EnumPtr->GetValueByIndex(*result);
+				int64 Value = *result; // NameMap already stores the enum value (GetValueByIndex during build); do not convert again
 				uint8* PropData = Property->ContainerPtrToValuePtr<uint8>(container);
 				NumericProperty->SetIntPropertyValue(PropData, Value);
 			}
