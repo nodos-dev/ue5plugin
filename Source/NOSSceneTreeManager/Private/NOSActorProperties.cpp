@@ -39,6 +39,58 @@ bool PropertyVisibleExp(FProperty* ueproperty)
 		ueproperty->HasAllPropertyFlags(RF_Public);
 }
 
+static bool HiddenByCondition(const UObject* Object, const FProperty* Property)
+{
+	if (!Object || !Property)
+	{
+		return false;
+	}
+
+	// EditCondition alone disables the property.
+	// EditConditionHides makes the condition control visibility.
+	if (!Property->HasMetaData(TEXT("EditConditionHides")))
+	{
+		return false;
+	}
+
+	FString Condition = Property->GetMetaData(TEXT("EditCondition"));
+	Condition.TrimStartAndEndInline();
+
+	if (Condition.IsEmpty())
+	{
+		return false;
+	}
+
+	bool bNegated = false;
+
+	if (Condition.StartsWith(TEXT("!")))
+	{
+		bNegated = true;
+		Condition.RightChopInline(1);
+		Condition.TrimStartAndEndInline();
+	}
+
+	const FBoolProperty* ConditionProperty =
+		FindFProperty<FBoolProperty>(Object->GetClass(), *Condition);
+
+	if (!ConditionProperty)
+	{
+		// Invalid or unsupported EditCondition expression.
+		return false;
+	}
+
+	bool bConditionValue =
+		ConditionProperty->GetPropertyValue_InContainer(Object);
+
+	if (bNegated)
+	{
+		bConditionValue = !bConditionValue;
+	}
+
+	// Hide when the EditCondition evaluates to false.
+	return !bConditionValue;
+}
+
 NOSProperty::NOSProperty(UObject* container, FProperty* uproperty, FString parentCategory, uint8* structPtr, NOSStructProperty* parentProperty)
 	: NOSProperty(FGuid::NewGuid(), container, uproperty, parentCategory, structPtr, parentProperty)
 {
@@ -115,7 +167,7 @@ NOSProperty::NOSProperty(FGuid id, UObject* container, FProperty* uproperty, FSt
 			}
 			EditConditionProperty = FindFProperty<FProperty>(OwnerStruct, FName(EditConditionPropertyName));
 		}
-		if(metaData.Contains(NAME_HiddenByDefault))
+		if(metaData.Contains(NAME_HiddenByDefault) || HiddenByCondition(container, uproperty))
 		{
 			nosMetaDataMap.Add(NosMetadataKeys::PinHidden, " ");
 		}
