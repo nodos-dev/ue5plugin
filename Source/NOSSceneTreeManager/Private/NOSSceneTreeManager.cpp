@@ -139,51 +139,51 @@ void FNOSSceneTreeManager::OnEndFrame()
 	auto frameCount = NOSTextureShareManager::GetInstance()->FrameCounter;
 	NOSTextureShareManager::GetInstance()->OnEndFrame();
 
-
 	flatbuffers::FlatBufferBuilder fb;
 	std::vector<flatbuffers::Offset<nos::app::AppExecutePinValueUpdate>> pinValueUpdates;
 	if (!NOSClient->NodeId.IsValid())
 		return;
-	if (bTwoWayBindingEnabled)
+
+	for (auto& [id, portal] : NOSPropertyManager.PortalPinsById)
 	{
-
-		for (auto& [id, portal] : NOSPropertyManager.PortalPinsById)
+		if (NOSPropertyManager.PropertiesById.Contains(portal.SourceId))
 		{
-			if (NOSPropertyManager.PropertiesById.Contains(portal.SourceId))
+			auto prop = NOSPropertyManager.PropertiesById.FindRef(portal.SourceId);
+			if (!prop)
 			{
-				auto prop = NOSPropertyManager.PropertiesById.FindRef(portal.SourceId);
-				if (!prop)
-				{
-					continue;
-				}
-				if (prop->TypeName == "nos.sys.vulkan.Texture")
-				{
-					continue;
-				}
-				auto val = prop->data;
-				auto updatedVal = prop->UpdatePinValue();
-				if (val.size() != updatedVal.size() || memcmp(val.data(), updatedVal.data(), val.size()) != 0)
-				{
-					pinValueUpdates.push_back(
-						nos::app::CreateAppExecutePinValueUpdateDirect(fb, (nos::fb::UUID*)&portal.Id, &updatedVal));
-					if (prop->Property)
-					{
-						if (auto objectContainer = prop->GetRawObjectContainer())
-						{
-							const FString OnChangedFunctionName = TEXT("OnChanged_") + prop->Property->GetName();
-							UFunction* OnChanged = objectContainer->GetClass()->FindFunctionByName(*OnChangedFunctionName);
-							if (OnChanged)
-							{
-								objectContainer->Modify();
-								objectContainer->ProcessEvent(OnChanged, nullptr);
-							}
-						}
+				continue;
+			}
+			if (prop->TypeName == "nos.sys.vulkan.Texture")
+			{
+				continue;
+			}
+			// TwoWayBinding is automatically enabled for output pins
+			if (!(bTwoWayBindingEnabled || portal.ShowAs == nos::fb::ShowAs::OUTPUT_PIN))
+			{
+				continue;
+			}
 
+			auto val = prop->data;
+			auto updatedVal = prop->UpdatePinValue();
+			if (val.size() != updatedVal.size() || memcmp(val.data(), updatedVal.data(), val.size()) != 0)
+			{
+				pinValueUpdates.push_back(
+					nos::app::CreateAppExecutePinValueUpdateDirect(fb, (nos::fb::UUID*)&portal.Id, &updatedVal));
+				if (prop->Property)
+				{
+					if (auto objectContainer = prop->GetRawObjectContainer())
+					{
+						const FString OnChangedFunctionName = TEXT("OnChanged_") + prop->Property->GetName();
+						UFunction* OnChanged = objectContainer->GetClass()->FindFunctionByName(*OnChangedFunctionName);
+						if (OnChanged)
+						{
+							objectContainer->Modify();
+							objectContainer->ProcessEvent(OnChanged, nullptr);
+						}
 					}
 				}
 			}
 		}
-
 	}
 	auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
 		frameCount,
