@@ -78,22 +78,24 @@ jobs:
             $available = (Get-ChildItem $env:REALITY_ENGINE_ROOT -Directory | Select-Object -ExpandProperty Name) -join ', '
             throw "No R5 checkout at $engineDir. Available: $available"
           }
-          # BuildPlugin runs against the installed build the R5 Editor Build workflow produces.
-          $installedEngineDir = Join-Path $engineDir 'LocalBuilds\Engine\Windows'
-          $runUatPath = Join-Path $installedEngineDir 'Engine\Build\BatchFiles\RunUAT.bat'
+          # BuildPlugin runs against the engine sources. The installed builds under
+          # LocalBuilds carry no rules assemblies, so UBT cannot build plugins with them.
+          $runUatPath = Join-Path $engineDir 'Engine\Build\BatchFiles\RunUAT.bat'
           if (-not (Test-Path $runUatPath)) {
-            throw "No installed engine build at $installedEngineDir. Run the R5 Editor Build for $env:REALITY_ENGINE_BRANCH_INPUT first."
+            throw "No RunUAT.bat at $runUatPath"
+          }
+          if (-not (Test-Path (Join-Path $engineDir 'Engine\Source'))) {
+            throw "$engineDir has no Engine\Source. Plugin builds need an R5 source checkout, not an installed build."
           }
           $pluginBranch = '${{ github.ref_name }}'.Replace('/', '-')
           $buildId = "$pluginBranch.b${{ github.run_number }}"
-          "REALITY_ENGINE_DIR=$engineDir"                     >> $env:GITHUB_ENV
-          "REALITY_INSTALLED_ENGINE_DIR=$installedEngineDir"  >> $env:GITHUB_ENV
-          "REALITY_RUN_UAT_PATH=$runUatPath"                  >> $env:GITHUB_ENV
-          "NODOS_LINK_BRANCH=$pluginBranch"                   >> $env:GITHUB_ENV
-          "NODOS_LINK_BUILD_ID=$buildId"                      >> $env:GITHUB_ENV
-          Write-Host "Engine           : $engineDir"
-          Write-Host "Installed engine : $installedEngineDir"
-          Write-Host "Build id         : $buildId"
+          "REALITY_ENGINE_DIR=$engineDir"      >> $env:GITHUB_ENV
+          "REALITY_RUN_UAT_PATH=$runUatPath"   >> $env:GITHUB_ENV
+          "NODOS_LINK_BRANCH=$pluginBranch"    >> $env:GITHUB_ENV
+          "NODOS_LINK_BUILD_ID=$buildId"       >> $env:GITHUB_ENV
+          Write-Host "Engine   : $engineDir"
+          Write-Host "RunUAT   : $runUatPath"
+          Write-Host "Build id : $buildId"
 
       - name: Checkout
         uses: actions/checkout@v4
