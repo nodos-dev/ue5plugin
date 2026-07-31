@@ -1,0 +1,242 @@
+# Copyright MediaZ Teknoloji A.S. All Rights Reserved.
+
+name: Plugin Build
+
+run-name: "${{ github.workflow }} | ${{ github.ref_name }} on R5 ${{ inputs.r5_branch }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      r5_branch:
+        description: 'R5 branch to build against. Dots are stripped to find the checkout folder (5.8 -> 58).'
+        required: true
+        default: '5.8'
+        type: string
+      engine_root:
+        description: 'Folder that holds the R5 checkouts on the runner'
+        required: true
+        default: 'D:\CI\zerodensity\Reality\w\R5\R5'
+        type: string
+      nodos_version:
+        description: 'Nodos version to bring into the build workspace'
+        required: true
+        default: '1.3'
+        type: string
+      clean:
+        description: 'Clean checkout and drop previous build output?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      create_release:
+        description: 'Create a GitHub release?'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      copy_to_share:
+        description: 'Copy the package to the network share?'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      share_dir:
+        description: 'Network share to copy the package to'
+        required: false
+        default: '\\zdfs20\rnd\NodosLink-Builds'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: [self-hosted, Windows, X64,  unreal]
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
+      NODOS_STORE_ACCESS_TOKEN: ${{ secrets.NODOS_STORE_ACCESS_TOKEN }}
+      REALITY_ENGINE_ROOT: ${{ inputs.engine_root }}
+      REALITY_ENGINE_BRANCH_INPUT: ${{ inputs.r5_branch }}
+
+    steps:
+      - name: Resolve Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $engineDir = Join-Path $env:REALITY_ENGINE_ROOT ($env:REALITY_ENGINE_BRANCH_INPUT.Replace('.', ''))
+          if (-not (Test-Path $engineDir)) {
+            $available = (Get-ChildItem $env:REALITY_ENGINE_ROOT -Directory | Select-Object -ExpandProperty Name) -join ', '
+            throw "No R5 checkout at $engineDir. Available: $available"
+          }
+          # BuildPlugin runs against the installed build the R5 Editor Build workflow produces.
+          $installedEngineDir = Join-Path $engineDir 'LocalBuilds\Engine\Windows'
+          $runUatPath = Join-Path $installedEngineDir 'Engine\Build\BatchFiles\RunUAT.bat'
+          if (-not (Test-Path $runUatPath)) {
+            throw "No installed engine build at $installedEngineDir. Run the R5 Editor Build for $env:REALITY_ENGINE_BRANCH_INPUT first."
+          }
+          $pluginBranch = '${{ github.ref_name }}'.Replace('/', '-')
+          $buildId = "$pluginBranch.b${{ github.run_number }}"
+          "REALITY_ENGINE_DIR=$engineDir"                     >> $env:GITHUB_ENV
+          "REALITY_INSTALLED_ENGINE_DIR=$installedEngineDir"  >> $env:GITHUB_ENV
+          "REALITY_RUN_UAT_PATH=$runUatPath"                  >> $env:GITHUB_ENV
+          "NODOS_LINK_BRANCH=$pluginBranch"                   >> $env:GITHUB_ENV
+          "NODOS_LINK_BUILD_ID=$buildId"                      >> $env:GITHUB_ENV
+          Write-Host "Engine           : $engineDir"
+          Write-Host "Installed engine : $installedEngineDir"
+          Write-Host "Build id         : $buildId"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CI_TOKEN || github.token }}
+          path: plugin
+          clean: ${{ inputs.clean }}
+
+      - name: Ensure Nosman
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nosmanPath = Join-Path '${{ github.workspace }}' 'nosman.exe'
+          Invoke-WebRequest -OutFile $nosmanPath `
+            -Uri 'https://github.com/nodos-dev/workspace/releases/latest/download/nosman-windows-x86_64.exe'
+
+          "SYSTEM_NOSMAN_PATH=$nosmanPath" >> $env:GITHUB_ENV
+          Write-Host "Using nosman at $nosmanPath"
+          & $nosmanPath --version
+
+      - name: Setup Nodos Workspace
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The plugin build brings its own Nodos workspace; NOSClient.Build.cs finds it
+          # through NODOS_WORKSPACE_DIR, so the engine does not need one.
+          $workspaceDir = Join-Path '${{ github.workspace }}' 'nodos'
+          if ('${{ inputs.clean }}' -eq 'true' -and (Test-Path $workspaceDir)) {
+            Remove-Item $workspaceDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $workspaceDir | Out-Null
+          Copy-Item $env:SYSTEM_NOSMAN_PATH (Join-Path $workspaceDir 'nodos.exe') -Force
+          Push-Location $workspaceDir
+          try {
+            & $env:SYSTEM_NOSMAN_PATH init --reinit
+            if ($LASTEXITCODE -ne 0) { throw "nosman init failed with exit code $LASTEXITCODE" }
+            & .\nodos.exe get --name nodos --version '${{ inputs.nodos_version }}' -y
+            if ($LASTEXITCODE -ne 0) { throw "nosman get failed with exit code $LASTEXITCODE" }
+            # The release ships its own nosman, put the downloaded one back.
+            Copy-Item $env:SYSTEM_NOSMAN_PATH .\nodos.exe -Force
+            & .\nodos.exe rescan --fetch-index
+            if ($LASTEXITCODE -ne 0) { throw "nosman rescan failed with exit code $LASTEXITCODE" }
+          }
+          finally { Pop-Location }
+          "NODOS_WORKSPACE_DIR=$workspaceDir" >> $env:GITHUB_ENV
+          Write-Host "Nodos workspace at $workspaceDir"
+
+      - name: Resolve Versions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location $env:NODOS_WORKSPACE_DIR
+          try {
+            $nosmanVersion = (& .\nodos.exe --version | Select-Object -First 1)
+            $engines = & .\nodos.exe engine list --json | ConvertFrom-Json
+            $nodosVersion = (($engines | ForEach-Object { $_.version }) -join ', ')
+            if (-not $nodosVersion) { throw "No Nodos engine in $env:NODOS_WORKSPACE_DIR" }
+          }
+          finally { Pop-Location }
+
+          $engineBranch = (git -C $env:REALITY_ENGINE_DIR branch --show-current | Select-Object -First 1)
+          $engineCommit = (git -C $env:REALITY_ENGINE_DIR rev-parse --short HEAD | Select-Object -First 1)
+          if (-not $engineBranch) { $engineBranch = 'detached' }
+
+          $pluginVersion = (Get-Content .\plugin\Nodos.uplugin | ConvertFrom-Json).VersionName
+
+          "NODOS_VERSION=$nodosVersion"                >> $env:GITHUB_ENV
+          "NOSMAN_VERSION=$nosmanVersion"              >> $env:GITHUB_ENV
+          "REALITY_ENGINE_BRANCH=$engineBranch"        >> $env:GITHUB_ENV
+          "REALITY_ENGINE_COMMIT=$engineCommit"        >> $env:GITHUB_ENV
+          "NODOS_LINK_VERSION=$pluginVersion"          >> $env:GITHUB_ENV
+          Write-Host "Nodos Link : $pluginVersion"
+          Write-Host "Nodos      : $nodosVersion"
+          Write-Host "Nosman     : $nosmanVersion"
+          Write-Host "R5         : $engineBranch ($engineCommit)"
+
+      - name: Build Plugin
+        shell: pwsh
+        working-directory: plugin
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packageDir = Join-Path '${{ github.workspace }}' 'package'
+          if (Test-Path $packageDir) { Remove-Item $packageDir -Recurse -Force }
+          if ('${{ inputs.clean }}' -eq 'true') {
+            foreach ($dir in '.\Binaries', '.\Intermediate') {
+              if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+            }
+          }
+          $pluginFile = (Resolve-Path .\Nodos.uplugin).Path
+          & $env:REALITY_RUN_UAT_PATH BuildPlugin "-Plugin=$pluginFile" "-Package=$packageDir" -NoTargetPlatforms
+          if ($LASTEXITCODE -ne 0) { throw "BuildPlugin failed with exit code $LASTEXITCODE" }
+          "NODOS_LINK_PACKAGE_DIR=$packageDir" >> $env:GITHUB_ENV
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packageZip = Join-Path '${{ github.workspace }}' "nodos-link-$env:NODOS_LINK_BUILD_ID.zip"
+          if (Test-Path $packageZip) { Remove-Item $packageZip -Force }
+          Compress-Archive -Path (Join-Path $env:NODOS_LINK_PACKAGE_DIR '*') -DestinationPath $packageZip
+          "NODOS_LINK_PACKAGE_ZIP=$packageZip" >> $env:GITHUB_ENV
+          Write-Host "Packaged Nodos Link $env:NODOS_LINK_VERSION to $packageZip"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodos-link-${{ env.NODOS_LINK_BUILD_ID }}
+          path: ${{ env.NODOS_LINK_PACKAGE_ZIP }}
+          if-no-files-found: error
+
+      - name: Copy to Share
+        if: ${{ inputs.copy_to_share == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targetDir = Join-Path '${{ inputs.share_dir }}' $env:NODOS_LINK_BRANCH
+          New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+          Copy-Item $env:NODOS_LINK_PACKAGE_ZIP -Destination $targetDir -Force
+          Write-Host "Copied to $targetDir"
+
+      - name: Create Release
+        if: ${{ inputs.create_release == 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $notes = @(
+            "## Component List"
+            "| Component | Version |"
+            "|:----------|:--------|"
+            "| Nodos Link | $env:NODOS_LINK_VERSION (``${{ github.sha }}``) |"
+            "| Nodos | $env:NODOS_VERSION |"
+            "| Nosman | $env:NOSMAN_VERSION |"
+            "| R5 Engine | $env:REALITY_ENGINE_BRANCH (``$env:REALITY_ENGINE_COMMIT``) |"
+            ""
+            "## Code changes"
+          ) -join "`r`n"
+          gh release create $env:NODOS_LINK_BUILD_ID `
+            --repo ${{ github.repository }} `
+            --target ${{ github.sha }} `
+            --title "Nodos Link $env:NODOS_LINK_VERSION ($env:NODOS_LINK_BUILD_ID)" `
+            --notes $notes `
+            --generate-notes `
+            --latest=false
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE" }
+          gh release upload $env:NODOS_LINK_BUILD_ID $env:NODOS_LINK_PACKAGE_ZIP --repo ${{ github.repository }} --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed with exit code $LASTEXITCODE" }
