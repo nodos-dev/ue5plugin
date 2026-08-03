@@ -195,7 +195,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $packageZip = Join-Path '${{ github.workspace }}' "nodos-link-$env:NODOS_LINK_BUILD_ID.zip"
           if (Test-Path $packageZip) { Remove-Item $packageZip -Force }
-          Compress-Archive -Path (Join-Path $env:NODOS_LINK_PACKAGE_DIR '*') -DestinationPath $packageZip
+          # Sources ship with the plugin, debug symbols and build leftovers do not.
+          7z a -bsp1 -tzip $packageZip (Join-Path $env:NODOS_LINK_PACKAGE_DIR '*') '-xr!*.pdb' '-xr!Intermediate'
+          if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
           "NODOS_LINK_PACKAGE_ZIP=$packageZip" >> $env:GITHUB_ENV
           Write-Host "Packaged Nodos Link $env:NODOS_LINK_VERSION to $packageZip"
 
