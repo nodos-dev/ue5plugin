@@ -49,6 +49,12 @@ nos::app::FN_ShutdownClient* FNodos::ShutdownClient = nullptr;
 FString FNodos::GetNodosSDKDir()
 {
 	FString NosmanPath = GET_NOS_CONFIG_VALUE(NosmanPath);
+	if (NosmanPath.IsEmpty())
+	{
+		// The plugin ships this default in Config/EditorSettings.ini. Repeating it
+		// here keeps an empty setting from resolving to the engine folder itself.
+		NosmanPath = TEXT("../Nodos/nodos.exe");
+	}
 	if (FPaths::IsRelative(NosmanPath))
 	{
 		NosmanPath = FPaths::Combine(FPaths::EngineDir(), NosmanPath);
@@ -61,6 +67,7 @@ FString FNodos::GetNodosSDKDir()
 	FString OutErrors;
 	if (!FPaths::FileExists(*NosmanPath))
 	{
+		UE_LOG(LogNOSClient, Warning, TEXT("No nosman at %s. Set Nosman Path in Project Settings under Nodos Link Settings."), *NosmanPath);
 		return "";
 	}
 	FPlatformProcess::ExecProcess(*NosmanPath, TEXT("sdk-info 18.5.0 process"), &ReturnCode, &OutResults, &OutErrors, *NosmanWorkingDirectory);

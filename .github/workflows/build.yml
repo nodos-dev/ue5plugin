@@ -120,8 +120,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # The plugin build brings its own Nodos workspace; NOSClient.Build.cs finds it
-          # through NODOS_WORKSPACE_DIR, so the engine does not need one.
+          # The plugin build brings its own Nodos workspace and points the NosmanPath
+          # editor setting at it, so the engine does not need one of its own.
           $workspaceDir = Join-Path '${{ github.workspace }}' 'nodos'
           if ('${{ inputs.clean }}' -eq 'true' -and (Test-Path $workspaceDir)) {
             Remove-Item $workspaceDir -Recurse -Force
@@ -140,19 +140,30 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "nosman rescan failed with exit code $LASTEXITCODE" }
           }
           finally { Pop-Location }
-          "NODOS_WORKSPACE_DIR=$workspaceDir" >> $env:GITHUB_ENV
+
+          # UnrealBuildTool reads this last, so it wins over the default the plugin
+          # ships. It lives in the engine's Saved folder, which is rewritten per build
+          # and never travels into the packaged plugin.
+          $editorSettings = Join-Path $env:REALITY_ENGINE_DIR 'Engine\Saved\Config\WindowsEditor\EditorSettings.ini'
+          New-Item -ItemType Directory -Force -Path (Split-Path $editorSettings) | Out-Null
+          Set-Content -Path $editorSettings -Value @(
+            '[/Script/NOSClient.NOSSettings]'
+            "NosmanPath=$(Join-Path $workspaceDir 'nodos.exe')"
+          )
+          "NODOS_WORKSPACE_PATH=$workspaceDir" >> $env:GITHUB_ENV
           Write-Host "Nodos workspace at $workspaceDir"
+          Write-Host "NosmanPath written to $editorSettings"
 
       - name: Resolve Versions
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Push-Location $env:NODOS_WORKSPACE_DIR
+          Push-Location $env:NODOS_WORKSPACE_PATH
           try {
             $nosmanVersion = (& .\nodos.exe --version | Select-Object -First 1)
             $engines = & .\nodos.exe engine list --json | ConvertFrom-Json
             $nodosVersion = (($engines | ForEach-Object { $_.version }) -join ', ')
-            if (-not $nodosVersion) { throw "No Nodos engine in $env:NODOS_WORKSPACE_DIR" }
+            if (-not $nodosVersion) { throw "No Nodos engine in $env:NODOS_WORKSPACE_PATH" }
           }
           finally { Pop-Location }
 

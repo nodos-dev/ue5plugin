@@ -1,0 +1,11 @@
+; Where the plugin looks for nosman. The installer renames this file to
+; EditorSettings.ini, so the shipped plugin carries the default while the working
+; copy stays out of the repository and can be pointed at a local workspace without
+; ever being committed. The path is relative to the Engine folder, so it means the
+; Nodos workspace sitting next to it.
+;
+; Prefer Project Settings -> Nodos Link Settings for a local override: it writes to
+; the engine's Saved/Config/WindowsEditor/EditorSettings.ini, which wins over this
+; file and is not tracked either.
+[/Script/NOSClient.NOSSettings]
+NosmanPath=..\Nodos\nodos.exe

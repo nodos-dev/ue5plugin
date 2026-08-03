@@ -135,33 +135,24 @@ public class NOSClient : ModuleRules
 		return PublicIncludeDir;
 	}
 
-	// Nosman sits in a Nodos workspace. Builds that bring their own workspace
-	// instead of using the one next to the engine, like plugin builds on CI, name
-	// its folder with the NODOS_WORKSPACE_DIR environment variable.
+	// Nosman sits in a Nodos workspace. Its path comes from the NosmanPath editor
+	// setting: the plugin ships a default in Config/EditorSettings.ini, and a build
+	// that uses a workspace somewhere else overrides it in the engine's own
+	// Saved/Config/WindowsEditor/EditorSettings.ini.
 	public static string GetNosmanPath(string RelativeEnginePath)
 	{
-		string WorkspaceDir = Environment.GetEnvironmentVariable("NODOS_WORKSPACE_DIR");
-		if (!String.IsNullOrEmpty(WorkspaceDir))
-		{
-			string NosmanInWorkspace = Path.Combine(WorkspaceDir, "nodos.exe");
-			if (!File.Exists(NosmanInWorkspace))
-			{
-				NosmanInWorkspace = Path.Combine(WorkspaceDir, "nosman.exe");
-			}
-			if (!File.Exists(NosmanInWorkspace))
-			{
-				LogError("NODOS_WORKSPACE_DIR is set to " + WorkspaceDir +
-					" but there is no nodos.exe or nosman.exe in it", true);
-				return null;
-			}
-			return NosmanInWorkspace;
-		}
-
 		string NosmanPath;
 
 		ConfigHierarchy PlatformGameConfig = ConfigCache.ReadHierarchy(ConfigHierarchyType.EditorSettings, null, UnrealTargetPlatform.Win64);
 
 		PlatformGameConfig.GetString("/Script/NOSClient.NOSSettings", "NosmanPath", out NosmanPath);
+
+		if (String.IsNullOrEmpty(NosmanPath))
+		{
+			// The plugin ships this default in Config/EditorSettings.ini. Repeating it
+			// here keeps an empty setting from resolving to the engine folder itself.
+			NosmanPath = Path.Combine("..", "Nodos", "nodos.exe");
+		}
 
 		if (!Path.IsPathRooted(NosmanPath))
 		{
@@ -173,7 +164,7 @@ public class NOSClient : ModuleRules
 		if(!File.Exists(NosmanPath))
 		{
 			string errorMessage = "Please verify Nosman Executable exist at " +
-				"(you can provide it from BaseEditorSettings.ini and it can be relative to Engine folder or it can be an absolute path) " + NosmanPath;
+				"(set NosmanPath in Project Settings under Nodos Link Settings, or in the engine's Saved/Config/WindowsEditor/EditorSettings.ini) " + NosmanPath;
 			LogError(errorMessage, true);
 			return null;
 		}
