@@ -204,6 +204,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # BuildPlugin rewrites the descriptor on its way into the package and drops
+          # EnabledByDefault while doing it, so put back what the plugin declares.
+          $packagedDescriptor = Join-Path $env:NODOS_LINK_PACKAGE_DIR 'Nodos.uplugin'
+          $declared = (Get-Content .\plugin\Nodos.uplugin -Raw | ConvertFrom-Json).EnabledByDefault
+          $packaged = Get-Content $packagedDescriptor -Raw | ConvertFrom-Json
+          $packaged | Add-Member -NotePropertyName 'EnabledByDefault' -NotePropertyValue $declared -Force
+          $packaged | ConvertTo-Json -Depth 20 | Set-Content $packagedDescriptor
+          Write-Host "EnabledByDefault=$declared in the packaged descriptor"
+
           $packageZip = Join-Path '${{ github.workspace }}' "nodos-link-$env:NODOS_LINK_BUILD_ID.zip"
           if (Test-Path $packageZip) { Remove-Item $packageZip -Force }
           # Sources ship with the plugin, debug symbols and build leftovers do not.
