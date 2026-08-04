@@ -141,18 +141,7 @@ public class NOSClient : ModuleRules
 	// Saved/Config/WindowsEditor/EditorSettings.ini.
 	public static string GetNosmanPath(string RelativeEnginePath)
 	{
-		string NosmanPath;
-
-		ConfigHierarchy PlatformGameConfig = ConfigCache.ReadHierarchy(ConfigHierarchyType.EditorSettings, null, UnrealTargetPlatform.Win64);
-
-		PlatformGameConfig.GetString("/Script/NOSClient.NOSSettings", "NosmanPath", out NosmanPath);
-
-		if (String.IsNullOrEmpty(NosmanPath))
-		{
-			// The plugin ships this default in Config/EditorSettings.ini. Repeating it
-			// here keeps an empty setting from resolving to the engine folder itself.
-			NosmanPath = Path.Combine("..", "Nodos", "nodos.exe");
-		}
+		string NosmanPath = Path.Combine("..", "Nodos", "nodos.exe");
 
 		if (!Path.IsPathRooted(NosmanPath))
 		{
@@ -160,12 +149,9 @@ public class NOSClient : ModuleRules
 			NosmanPath = Path.Combine(EngineDir, NosmanPath);
 		}
 
-
 		if(!File.Exists(NosmanPath))
 		{
-			string errorMessage = "Please verify Nosman Executable exist at " +
-				"(set NosmanPath in Project Settings under Nodos Link Settings, or in the engine's Saved/Config/WindowsEditor/EditorSettings.ini) " + NosmanPath;
-			LogError(errorMessage, true);
+			LogError("Please verify Nosman Executable exist at " + NosmanPath, true);
 			return null;
 		}
 
