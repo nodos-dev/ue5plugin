@@ -52,6 +52,11 @@ on:
         default: '\\zdfs20\rnd\NodosLink-Builds'
         type: string
 
+      sign:
+        type: boolean
+        required: true
+        description: 'Sign the plugin binaries'
+        default: true
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -64,6 +69,12 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
+      # The signing service is installed on the runner and holds the key. It is told
+      # which one to use by the profile, and identifies this build by the token, which
+      # it reads from here rather than from a command line that would end up in a log.
+      SIGNING_SERVICE_CLI_PATH: 'C:/Program Files/Zero Density/Signing Service/signing-cli.exe'
+      SIGNING_SERVICE_PROFILE: sslcom-yubikey-prod
+      SIGNING_SERVICE_APP_TOKEN: ${{ secrets.SIGNING_SERVICE_APP_TOKEN }}
       NODOS_STORE_ACCESS_TOKEN: ${{ secrets.NODOS_STORE_ACCESS_TOKEN }}
       REALITY_ENGINE_ROOT: ${{ inputs.engine_root }}
       REALITY_ENGINE_BRANCH_INPUT: ${{ inputs.r5_branch }}
@@ -199,6 +210,25 @@ jobs:
           & $env:REALITY_RUN_UAT_PATH BuildPlugin "-Plugin=$pluginFile" "-Package=$packageDir" -NoTargetPlatforms
           if ($LASTEXITCODE -ne 0) { throw "BuildPlugin failed with exit code $LASTEXITCODE" }
           "NODOS_LINK_PACKAGE_DIR=$packageDir" >> $env:GITHUB_ENV
+
+      - name: Sign Plugin
+        if: inputs.sign
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # What BuildPlugin compiled. Signed before it is zipped, since the zip is
+          # what ships and nothing downstream opens it again.
+          $dir = Join-Path $env:NODOS_LINK_PACKAGE_DIR 'Binaries/Win64'
+          $files = @(Get-ChildItem $dir -File -Recurse -Include '*.dll', '*.exe' -ErrorAction SilentlyContinue)
+          if ($files.Count -eq 0) { throw "No binaries to sign under $dir" }
+          foreach ($f in $files) {
+            $out = & $env:SIGNING_SERVICE_CLI_PATH sign --profile $env:SIGNING_SERVICE_PROFILE --file $f.FullName 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0 -or $out -notmatch '"status"\s*:\s*"signed"') {
+              throw "Failed to sign $($f.Name): $($out.Trim())"
+            }
+            Write-Host "  signed $($f.Name)"
+          }
+          Write-Host "Signed $($files.Count) file(s)"
 
       - name: Package
         shell: pwsh
