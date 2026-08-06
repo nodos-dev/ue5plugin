@@ -135,13 +135,18 @@ public class NOSClient : ModuleRules
 		return PublicIncludeDir;
 	}
 
-	// Nosman sits in a Nodos workspace. Its path comes from the NosmanPath editor
-	// setting: the plugin ships a default in Config/EditorSettings.ini, and a build
-	// that uses a workspace somewhere else overrides it in the engine's own
-	// Saved/Config/WindowsEditor/EditorSettings.ini.
+	// Nosman sits in a Nodos workspace, beside the engine where a developer's link
+	// points. A build that keeps its workspace somewhere of its own says so in
+	// NOSMAN_PATH, which matters where several builds share one engine and would
+	// otherwise be reaching for the same folder.
 	public static string GetNosmanPath(string RelativeEnginePath)
 	{
-		string NosmanPath = Path.Combine("..", "Nodos", "nodos.exe");
+		string NosmanPath = Environment.GetEnvironmentVariable("NOSMAN_PATH");
+
+		if (String.IsNullOrEmpty(NosmanPath))
+		{
+			NosmanPath = Path.Combine("..", "Nodos", "nodos.exe");
+		}
 
 		if (!Path.IsPathRooted(NosmanPath))
 		{
@@ -151,7 +156,8 @@ public class NOSClient : ModuleRules
 
 		if(!File.Exists(NosmanPath))
 		{
-			LogError("Please verify Nosman Executable exist at " + NosmanPath, true);
+			LogError("Please verify Nosman Executable exist at " + NosmanPath +
+				" (or set NOSMAN_PATH to a nosman elsewhere)", true);
 			return null;
 		}
 

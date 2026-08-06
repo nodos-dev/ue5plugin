@@ -131,8 +131,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # The plugin build brings its own Nodos workspace and points the NosmanPath
-          # editor setting at it, so the engine does not need one of its own.
+          # The build needs a Nodos workspace to compile the SDK against.
+          # Kept here rather than beside the engine: the engine checkout is shared,
+          # and NOSMAN_PATH below tells the build where to find this one.
           $workspaceDir = Join-Path '${{ github.workspace }}' 'nodos'
           if ('${{ inputs.clean }}' -eq 'true' -and (Test-Path $workspaceDir)) {
             Remove-Item $workspaceDir -Recurse -Force
@@ -152,18 +153,9 @@ jobs:
           }
           finally { Pop-Location }
 
-          # UnrealBuildTool reads this last, so it wins over the default the plugin
-          # ships. It lives in the engine's Saved folder, which is rewritten per build
-          # and never travels into the packaged plugin.
-          $editorSettings = Join-Path $env:REALITY_ENGINE_DIR 'Engine\Saved\Config\WindowsEditor\EditorSettings.ini'
-          New-Item -ItemType Directory -Force -Path (Split-Path $editorSettings) | Out-Null
-          Set-Content -Path $editorSettings -Value @(
-            '[/Script/NOSClient.NOSSettings]'
-            "NosmanPath=$(Join-Path $workspaceDir 'nodos.exe')"
-          )
           "NODOS_WORKSPACE_PATH=$workspaceDir" >> $env:GITHUB_ENV
+          "NOSMAN_PATH=$(Join-Path $workspaceDir 'nodos.exe')" >> $env:GITHUB_ENV
           Write-Host "Nodos workspace at $workspaceDir"
-          Write-Host "NosmanPath written to $editorSettings"
 
       - name: Resolve Versions
         shell: pwsh
