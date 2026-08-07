@@ -66,7 +66,7 @@ public:
 	TMap<TPair<void*, UFunction*>, TSharedPtr<NOSFunction>> FunctionsByContainerAndUEFunction;
 	void Reset(bool ResetPortals = true);
 
-	void OnBeginFrame();
+	TOptional<uint64_t> OnBeginFrame(bool bConsumeExecuteFrame);
 	void OnEndFrame();
 };
 
@@ -355,6 +355,7 @@ public:
 	nos::app::ExecutionState ExecutionState = nos::app::ExecutionState::IDLE;
 
 	bool ToggleExecutionStateToSynced = false;
+	TOptional<uint64_t> ActiveNodosFrameNumber;
 	bool ShowHiddenActorsOnNodos = false;
 
 	bool AlwaysUpdateOnActorSpawns = false;

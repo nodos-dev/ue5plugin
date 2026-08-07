@@ -546,6 +546,11 @@ void FNOSClient::Connected_GrpcThread()
 
 void FNOSClient::OnStateChanged_GrpcThread(nos::app::ExecutionState newState)
 {
+	if (newState == nos::app::ExecutionState::IDLE && EventDelegates)
+	{
+		EventDelegates->ExecuteQueue.ResetForNewSyncEpoch();
+	}
+
 	OnNOSStateChanged_GRPCThread.Broadcast(newState);
 
 	TaskQueue.Enqueue([this, newState]()

@@ -25,72 +25,80 @@
 
 struct ExecuteInfo
 {
-	uint64_t FrameNumber;
+	uint64_t FrameNumber = 0;
 	TArray<TPair<uuids::uuid, nos::Buffer>> PinValueUpdates;
 };
 struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 {
-	ExecuteInfo PopFrameNumber(uint64_t frameNumber, float maxWaitTime)
-	{
-		ExecuteInfo executeInfo{};
-		DiscardExcessThenDequeue(executeInfo, frameNumber, true, maxWaitTime);
-		return executeInfo;
-	}
-	void EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
-	{
-		ExecuteInfo start{};
-		start.FrameNumber = appExecuteStart->frame_counter();
-		if (auto* pinValueUpdates = appExecuteStart->pin_value_updates())
-			for (auto const& pinValueUpdate : *pinValueUpdates)
-			{
-				uuids::uuid pinId(pinValueUpdate->pin_id()->bytes()->begin(), pinValueUpdate->pin_id()->bytes()->end());
-				start.PinValueUpdates.Emplace(pinId, nos::Buffer(pinValueUpdate->value()->data(), pinValueUpdate->value()->size()));
-			}
-		if (appExecuteStart->reset())
-		{
-			std::scoped_lock lock(Guard);
-			Empty();
-		}
-		else
-			Enqueue(std::move(start));
-	}
-private:
-	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait, float maxWaitTime)
+	TOptional<ExecuteInfo> TryPopFrame()
 	{
 		std::scoped_lock lock(Guard);
-		uint32_t tryCount = 0;
-		bool dequeued = false;
-		bool oldLiveNow = LiveNow;
-		constexpr int retryCount = 20;
-		FPlatformProcess::ConditionalSleep([&]()
+
+		ExecuteInfo PendingExecute;
+		bool bDequeued = false;
+		while (Dequeue(PendingExecute))
+		{
+			if (LastDequeuedFrameNumber.IsSet() && PendingExecute.FrameNumber <= LastDequeuedFrameNumber.GetValue())
 			{
-				while (Peek(result))
-				{
-					LiveNow = true;
-					dequeued = true;
-					if (result.FrameNumber <= requestedFrameNumber)
-					{
-						ExecuteInfo pop;
-						Pop();
-					}
-					if (result.FrameNumber >= requestedFrameNumber)
-					{
-						return true;
-					}
-				}
+				UE_LOG(LogCore, Warning, TEXT("Discarding stale Nodos execute frame %llu; last consumed frame is %llu"),
+					PendingExecute.FrameNumber, LastDequeuedFrameNumber.GetValue());
+				continue;
+			}
 
-				return !LiveNow || !wait || tryCount++ > retryCount;
-			}, maxWaitTime / retryCount);
+			LastDequeuedFrameNumber = PendingExecute.FrameNumber;
+			bDequeued = true;
+			break;
+		}
 
-		LiveNow = dequeued;
-		if (oldLiveNow != LiveNow)
-			UE_LOG(LogCore, Warning, TEXT("LiveNow Changed"));
+		if (LiveNow != bDequeued)
+		{
+			LiveNow = bDequeued;
+			UE_LOG(LogCore, Verbose, TEXT("Nodos execute queue is now %s"), LiveNow ? TEXT("live") : TEXT("idle"));
+		}
 
-		if (LiveNow && result.FrameNumber != requestedFrameNumber)
-			UE_LOG(LogCore, Warning, TEXT("Mismatch between popped frame number and requested frame number: %i, %i"), result.FrameNumber, requestedFrameNumber);
+		if (!bDequeued)
+		{
+			return {};
+		}
+
+		return MoveTemp(PendingExecute);
 	}
-	
-	bool LiveNow = true;
+
+	void EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
+	{
+		std::scoped_lock lock(Guard);
+		if (appExecuteStart->reset())
+		{
+			// Nodos has already submitted external-sync work for every queued execute
+			// request. Preserve those requests so Unreal can complete their GPU handoffs
+			// and return ExecutionCompleted. Only an IDLE transition abandons an epoch.
+			return;
+		}
+
+		ExecuteInfo Start;
+		Start.FrameNumber = appExecuteStart->frame_counter();
+		if (auto* PinValueUpdates = appExecuteStart->pin_value_updates())
+		{
+			for (auto const& PinValueUpdate : *PinValueUpdates)
+			{
+				uuids::uuid PinId(PinValueUpdate->pin_id()->bytes()->begin(), PinValueUpdate->pin_id()->bytes()->end());
+				Start.PinValueUpdates.Emplace(PinId, nos::Buffer(PinValueUpdate->value()->data(), PinValueUpdate->value()->size()));
+			}
+		}
+		Enqueue(MoveTemp(Start));
+	}
+
+	void ResetForNewSyncEpoch()
+	{
+		std::scoped_lock lock(Guard);
+		Empty();
+		LastDequeuedFrameNumber.Reset();
+		LiveNow = false;
+	}
+
+private:
+	bool LiveNow = false;
+	TOptional<uint64_t> LastDequeuedFrameNumber;
 	std::mutex Guard;
 };
 

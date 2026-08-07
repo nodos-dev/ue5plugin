@@ -119,6 +119,8 @@ void FNOSSceneTreeManager::ChangeParentActors()
 
 void FNOSSceneTreeManager::OnBeginFrame()
 {
+	ActiveNodosFrameNumber.Reset();
+
 	if(ToggleExecutionStateToSynced)
 	{
 		ToggleExecutionStateToSynced = false;
@@ -128,16 +130,31 @@ void FNOSSceneTreeManager::OnBeginFrame()
 			SendSyncSemaphores(false);
 		}
 	}
+
+	// Shared-resource publication and orphan-state maintenance must happen before
+	// synchronization can begin. This performs no texture copies or GPU fence waits.
+	NOSTextureShareManager::GetInstance()->UpdateTexturePinValues();
 	
-	NOSPropertyManager.OnBeginFrame();
-	NOSTextureShareManager::GetInstance()->OnBeginFrame();
+	const bool bIsSynchronized = ExecutionState == nos::app::ExecutionState::SYNCED;
+	TOptional<uint64_t> ExecuteFrameNumber = NOSPropertyManager.OnBeginFrame(bIsSynchronized);
+	if (ExecuteFrameNumber.IsSet())
+	{
+		ActiveNodosFrameNumber = ExecuteFrameNumber;
+		NOSTextureShareManager::GetInstance()->OnBeginFrame(ExecuteFrameNumber.GetValue());
+	}
 }
 
 void FNOSSceneTreeManager::OnEndFrame()
 {
 	NOSPropertyManager.OnEndFrame();
-	auto frameCount = NOSTextureShareManager::GetInstance()->FrameCounter;
-	NOSTextureShareManager::GetInstance()->OnEndFrame();
+	if (!ActiveNodosFrameNumber.IsSet())
+	{
+		return;
+	}
+
+	const uint64_t FrameCount = ActiveNodosFrameNumber.GetValue();
+	ActiveNodosFrameNumber.Reset();
+	NOSTextureShareManager::GetInstance()->OnEndFrame(FrameCount);
 
 	flatbuffers::FlatBufferBuilder fb;
 	std::vector<flatbuffers::Offset<nos::app::AppExecutePinValueUpdate>> pinValueUpdates;
@@ -186,7 +203,7 @@ void FNOSSceneTreeManager::OnEndFrame()
 		}
 	}
 	auto offset = nos::CreateAppEventOffset(fb, nos::app::CreateExecutionCompletedDirect(fb, (nos::fb::UUID*)&FNOSClient::NodeId,
-		frameCount,
+		FrameCount,
 		&pinValueUpdates));
 	fb.Finish(offset);
 	auto buf = fb.Release();
@@ -3734,22 +3751,18 @@ void FNOSPropertyManager::Reset(bool ResetPortals)
 	FunctionsByContainerAndUEFunction.Empty();
 }
 
-void FNOSPropertyManager::OnBeginFrame()
+TOptional<uint64_t> FNOSPropertyManager::OnBeginFrame(bool bConsumeExecuteFrame)
 {
-	if (NOSClient->EventDelegates)
+	TOptional<uint64_t> ExecuteFrameNumber;
+	if (bConsumeExecuteFrame && NOSClient->EventDelegates)
 	{
-		constexpr float DEFAULT_DELTA_SECONDS = 1.0f / 60.0f;
-		float DeltaSeconds = 0.0f;
-		if (FNOSSceneTreeManager::daWorld)
-			DeltaSeconds = FNOSSceneTreeManager::daWorld->GetDeltaSeconds();
-		else
-			DeltaSeconds = DEFAULT_DELTA_SECONDS;
-		constexpr float MAX_FRAME_WAIT_MULTIPLIER = 3.0f;
-		auto executeInfo = NOSClient->EventDelegates->ExecuteQueue.PopFrameNumber(NOSTextureShareManager::GetInstance()->FrameCounter, DeltaSeconds * MAX_FRAME_WAIT_MULTIPLIER);
-
-		for (auto& [id, val] : executeInfo.PinValueUpdates)
+		if (TOptional<ExecuteInfo> PendingExecute = NOSClient->EventDelegates->ExecuteQueue.TryPopFrame())
 		{
-			NOSClient->OnNOSPinValueChanged.Broadcast(*(nos::fb::UUID*)&id, val.As<u8>(), val.Size(), false);
+			ExecuteFrameNumber = PendingExecute->FrameNumber;
+			for (auto& [Id, Value] : PendingExecute->PinValueUpdates)
+			{
+				NOSClient->OnNOSPinValueChanged.Broadcast(*(nos::fb::UUID*)&Id, Value.As<u8>(), Value.Size(), false);
+			}
 		}
 	}
 	for (auto [id, portal] : PortalPinsById)
@@ -3768,6 +3781,8 @@ void FNOSPropertyManager::OnBeginFrame()
 			continue;
 		}
 	}
+
+	return ExecuteFrameNumber;
 }
 
 void FNOSPropertyManager::OnEndFrame()
