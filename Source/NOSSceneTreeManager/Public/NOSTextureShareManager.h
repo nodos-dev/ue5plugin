@@ -107,10 +107,13 @@ public:
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
+	/// Refresh shared texture resources and pin orphan state without submitting GPU work.
+	/// This must run before the node becomes synchronized so Nodos can make the path live.
+	void UpdateTexturePinValues();
 	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
-	void ProcessCopies(nos::fb::ShowAs);
-	void OnBeginFrame();
-	void OnEndFrame();
+	void ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t FrameNumber);
+	void OnBeginFrame(uint64_t FrameNumber);
+	void OnEndFrame(uint64_t FrameNumber);
 	bool SwitchStateToSynced();
 	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
 
@@ -142,12 +145,10 @@ private:
 	/// All texture property values are checked against the current SharedResource destination each frame, so we must keep them
 	TMap<NOSProperty*, TSharedPtr<TexturePropertyInfo>> TextureProperties;
 
-	/// This compares the current SharedResource destination against the property's current render target(UE side)
-	/// If there is a difference, it creates a new SharedResource and deletes the old one
-	/// Also updates the nodos pin value and orphanness state
-	void CheckAndUpdateTexturePinValues();
-
+	/// Bootstrap newly created shared fences to the first real Nodos frame in the epoch.
+	void InitializeFenceEpoch(uint64_t FrameNumber);
 	void Initiate();
+	bool bFenceEpochInitialized = false;
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;
 	FRunnableThread* FailSafeThread = nullptr;
 };

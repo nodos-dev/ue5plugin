@@ -546,6 +546,18 @@ void FNOSClient::Connected_GrpcThread()
 
 void FNOSClient::OnStateChanged_GrpcThread(nos::app::ExecutionState newState)
 {
+	if (EventDelegates)
+	{
+		if (newState == nos::app::ExecutionState::SYNCED)
+		{
+			EventDelegates->ExecuteQueue.StartSyncEpoch();
+		}
+		else
+		{
+			EventDelegates->ExecuteQueue.ResetForNewSyncEpoch();
+		}
+	}
+
 	OnNOSStateChanged_GRPCThread.Broadcast(newState);
 
 	TaskQueue.Enqueue([this, newState]()
@@ -571,6 +583,7 @@ void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 		{
 			FNOSClient::NodeId = *(FGuid*)&copy.id;
 			NOSTimeStep = NewObject<UNOSCustomTimeStep>();
+			NOSTimeStep->SetClient(this);
 			NOSTimeStep->AddToRoot();
 			flatbuffers::FlatBufferBuilder fbb;
 			auto offset = nos::fb::CreateNode(fbb, &copy);
@@ -588,6 +601,11 @@ void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 				NOSClient->UENodeStatusHandler.Add("map_name", MapNameStatus);
 			}*/
 		});
+}
+
+bool FNOSClient::WaitForExecuteFrame()
+{
+	return EventDelegates && EventDelegates->ExecuteQueue.WaitForFrame();
 }
 
 void FNOSClient::NodeRemoved_GrpcThread()
@@ -617,6 +635,13 @@ void FNOSClient::NodeRemoved_GrpcThread()
 
 void FNOSClient::Disconnected_GrpcThread()
 {
+	if (EventDelegates)
+	{
+		// Connection loss is an epoch boundary even if Nodos disappeared before it
+		// could remove the node or send an IDLE state transition.
+		EventDelegates->ExecuteQueue.ResetForNewSyncEpoch();
+	}
+
 	if (NodePresent_GrpcThread)
 	{
 		NodeRemoved_GrpcThread();
