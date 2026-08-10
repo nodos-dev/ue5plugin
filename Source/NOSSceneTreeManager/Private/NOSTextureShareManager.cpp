@@ -190,7 +190,7 @@ nos::sys::vulkan::TTexture NOSTextureShareManager::AddTexturePin(NOSProperty* no
 	return copyInfoTexPair->second;
 }
 
-void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
+void NOSTextureShareManager::UpdateTexturePinValues()
 {
 	/// This should only send pin values for non-broadcasted property value changes since they are already handled in NOSSceneTreeManager's code
 	for (auto const& [prop, texPropInfo] : TextureProperties)
@@ -390,22 +390,23 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 	}
 }
 
-void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
+void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t FrameNumber)
 {
-	CheckAndUpdateTexturePinValues();
 	TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>> CopiesFiltered;
 	GetActiveTextureCopiesWithShowAs(CopyShowAs, TextureProperties, CopiesFiltered);
 
 	//auto cmdData = GetNewCommandList();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this, CopyShowAs, CopiesFiltered, frameNumber = FrameCounter](FRHICommandListImmediate& RHICmdList)
+		[this, CopyShowAs, CopiesFiltered, FrameNumber](FRHICommandListImmediate& RHICmdList)
 		{
 #ifdef DEBUG_NODOS_TEXTURE_COPIES
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Output, CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN, TEXT("Nodos Copies(Output)"));
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Input, CopyShowAs == nos::fb::ShowAs::INPUT_PIN, TEXT("Nodos Copies(Input)"));
 #endif
 			TMap<ID3D12Fence*, u64> SignalGroup;
-			SetupFences(RHICmdList, CopyShowAs, SignalGroup, frameNumber);
+			// FrameNumber comes directly from AppExecuteStart. Never derive cross-process
+			// fence values from the independently-running Unreal frame counter.
+			SetupFences(RHICmdList, CopyShowAs, SignalGroup, FrameNumber);
 			for (auto& [URT, pin] : CopiesFiltered)
 			{
 				FRHICopyTextureInfo CopyInfo;
@@ -438,15 +439,20 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
 		});
 }
 
-void NOSTextureShareManager::OnBeginFrame()
+void NOSTextureShareManager::OnBeginFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::INPUT_PIN);
+	InitializeFenceEpoch(FrameNumber);
+	// Publish the render target produced by the previous Unreal frame first. This
+	// keeps the app/GPU handshake one frame deep: Nodos can consume frame N while
+	// Unreal imports frame N inputs and renders the next image. Waiting to publish
+	// until OnEndFrame serializes the full Unreal render into Nodos's frame budget.
+	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	ProcessCopies(nos::fb::ShowAs::INPUT_PIN, FrameNumber);
 }
 
-void NOSTextureShareManager::OnEndFrame()
+void NOSTextureShareManager::OnEndFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN);
-	FrameCounter++;
+	FrameCounter = FrameNumber + 1;
 	while(!ResourcesToDelete.IsEmpty())
 	{
 		auto* resource = ResourcesToDelete.Peek();
@@ -541,6 +547,8 @@ void NOSTextureShareManager::Initiate()
 
 void NOSTextureShareManager::RenewSemaphores()
 {
+	bFenceEpochInitialized = false;
+
 	if (InputFence)
 	{
 		::CloseHandle(SyncSemaphoresExportHandles.InputSemaphore);
@@ -561,6 +569,24 @@ void NOSTextureShareManager::RenewSemaphores()
 	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&OutputFence));
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(InputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.InputSemaphore));
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(OutputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.OutputSemaphore));
+}
+
+void NOSTextureShareManager::InitializeFenceEpoch(uint64_t FrameNumber)
+{
+	FScopeLock Lock(&CriticalSectionState);
+	if (bFenceEpochInitialized || !InputFence || !OutputFence)
+	{
+		return;
+	}
+
+	const uint64_t InitialValue = 2 * FrameNumber;
+	if (InitialValue > 0)
+	{
+		NOS_D3D12_ASSERT_SUCCESS(InputFence->Signal(InitialValue));
+		NOS_D3D12_ASSERT_SUCCESS(OutputFence->Signal(InitialValue));
+	}
+
+	bFenceEpochInitialized = true;
 }
 
 SharedResourceInfo::~SharedResourceInfo()

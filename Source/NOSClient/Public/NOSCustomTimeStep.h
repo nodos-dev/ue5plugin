@@ -39,6 +39,11 @@ public:
 		NodosDeltaTime = deltaSeconds;
 	}
 
+	void SetClient(FNOSClient* InClient)
+	{
+		Client = InClient;
+	}
+
 	FString GetDisplayName() const override
 	{
 		FString frameRateString;
@@ -66,6 +71,11 @@ public:
 		}
 		else
 		{
+			if (Client && !Client->WaitForExecuteFrame())
+			{
+				return true;
+			}
+
 			double deltaTimeInSeconds = static_cast<double>(NodosDeltaTime.x()) / static_cast<double>(NodosDeltaTime.y());
 			if (FMath::IsNearlyZero(FApp::GetLastTime()))
 			{
@@ -85,7 +95,7 @@ public:
 	}
 
 private:
-
+	FNOSClient* Client = nullptr;
 	nos::fb::vec2u NodosDeltaTime{};
 };
 
