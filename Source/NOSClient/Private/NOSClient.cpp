@@ -39,6 +39,17 @@ DEFINE_LOG_CATEGORY(LogNOSClient);
 #define LOG(x) UE_LOG(LogNOSClient, Display, TEXT(x))
 #define LOGF(x, y) UE_LOG(LogNOSClient, Display, TEXT(x), y)
 
+static TAutoConsoleVariable<int32> CVarNodosDeadlockWatchdogTimeoutMs(
+	TEXT("reality.nodos.timeout"),
+	80,
+	TEXT("Maximum time in milliseconds to wait for a Nodos execute frame before releasing one Unreal tick for deadlock recovery."),
+	ECVF_Default);
+
+int32 GetNodosDeadlockWatchdogTimeoutMs()
+{
+	return FMath::Max(CVarNodosDeadlockWatchdogTimeoutMs.GetValueOnAnyThread(), 1);
+}
+
 FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 

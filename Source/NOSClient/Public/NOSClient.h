@@ -30,6 +30,9 @@ struct ExecuteInfo
 	uint64_t FrameNumber = 0;
 	TArray<TPair<uuids::uuid, nos::Buffer>> PinValueUpdates;
 };
+
+NOSCLIENT_API int32 GetNodosDeadlockWatchdogTimeoutMs();
+
 struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 {
 	TOptional<ExecuteInfo> TryPopFrame()
@@ -120,12 +123,14 @@ struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 		// This is an emergency deadlock watchdog, not part of normal frame pacing.
 		// State and connection-close events wake immediately; only a lost callback
 		// is allowed to escape the synchronized wait after a prolonged outage.
-		constexpr auto DeadlockWatchdogInterval = std::chrono::seconds(2);
+		const int32 DeadlockWatchdogTimeoutMs = GetNodosDeadlockWatchdogTimeoutMs();
+		const auto DeadlockWatchdogInterval = std::chrono::milliseconds(DeadlockWatchdogTimeoutMs);
 		const bool bWoken = FrameAvailable.wait_for(lock, DeadlockWatchdogInterval,
 			[this]() { return !bSynchronized || MaintenanceTicksRemaining > 0 || !IsEmpty(); });
 		if (!bWoken && bSynchronized)
 		{
-			UE_LOG(LogCore, Error, TEXT("Timed out waiting 2 seconds for a Nodos execute frame; releasing the game thread to recover"));
+			UE_LOG(LogCore, Error, TEXT("Timed out waiting %d ms for a Nodos execute frame; releasing the game thread to recover"),
+				DeadlockWatchdogTimeoutMs);
 		}
 		if (MaintenanceTicksRemaining > 0)
 		{
