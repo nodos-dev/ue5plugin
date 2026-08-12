@@ -3,6 +3,7 @@
 #include "NOSTextureShareManager.h"
 
 #include "HardwareInfo.h"
+#include "HAL/IConsoleManager.h"
 
 #pragma warning (disable : 4800)
 #pragma warning (disable : 4668)
@@ -30,6 +31,14 @@
 #include "nosVulkanSubsystem/nosVulkanSubsystem.h"
 
 NOSTextureShareManager* NOSTextureShareManager::singleton;
+
+static TAutoConsoleVariable<int32> CVarNodosOutputAtBeginFrame(
+	TEXT("reality.nodos.outputatbegin"),
+	1,
+	TEXT("Selects when Unreal publishes its shared output texture to Nodos.\n")
+	TEXT("  1: publish the previous render at frame begin so Unreal and Nodos overlap (default).\n")
+	TEXT("  0: publish the current render at frame end, matching the legacy serialized pipeline."),
+	ECVF_Default);
 
 //#define FAIL_SAFE_THREAD
 //#define DEBUG_FRAME_SYNC_LOG
@@ -190,7 +199,7 @@ nos::sys::vulkan::TTexture NOSTextureShareManager::AddTexturePin(NOSProperty* no
 	return copyInfoTexPair->second;
 }
 
-void NOSTextureShareManager::CheckAndUpdateTexturePinValues()
+void NOSTextureShareManager::UpdateTexturePinValues()
 {
 	/// This should only send pin values for non-broadcasted property value changes since they are already handled in NOSSceneTreeManager's code
 	for (auto const& [prop, texPropInfo] : TextureProperties)
@@ -362,12 +371,14 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 	{
 		if(CopyShowAs == nos::fb::ShowAs::INPUT_PIN)
 		{
-			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue,InputFence = InputFence, frameNumber](FRHICommandList& ExecutingCmdList)
+			const uint64_t WaitValue = (2 * frameNumber) + 1;
+			const uint64_t SignalValue = (2 * frameNumber) + 2;
+			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue, InputFence = InputFence, WaitValue](FRHICommandList& ExecutingCmdList)
 			{
 				TSharedPtr<std::atomic<bool>> bHasSignalled;
-				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, InputFence, (2 * frameNumber) + 1, bHasSignalled);
+				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, InputFence, WaitValue, bHasSignalled);
 			});
-			SignalGroup.Add(InputFence, (2 * frameNumber) + 2);
+			SignalGroup.Add(InputFence, SignalValue);
 
 #ifdef DEBUG_FRAME_SYNC_LOG
 			UE_LOG(LogTemp, Warning, TEXT("Input pins are waiting on %d") , 2 * frameNumber + 1);
@@ -376,12 +387,14 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 		}
 		else if (CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN)
 		{
-			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue, OutputFence = OutputFence, frameNumber = frameNumber](FRHICommandList& ExecutingCmdList)
+			const uint64_t WaitValue = 2 * frameNumber;
+			const uint64_t SignalValue = (2 * frameNumber) + 1;
+			RHICmdList.EnqueueLambda([CmdQueue = CmdQueue, OutputFence = OutputFence, WaitValue](FRHICommandList& ExecutingCmdList)
 			{
 				TSharedPtr<std::atomic<bool>> bHasSignalled;
-				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, OutputFence, (2 * frameNumber), bHasSignalled);
+				GetID3D12DynamicRHI()->RHIWaitManualFence(ExecutingCmdList, OutputFence, WaitValue, bHasSignalled);
 			});
-			SignalGroup.Add(OutputFence, (2 * frameNumber) + 1);
+			SignalGroup.Add(OutputFence, SignalValue);
 
 #ifdef DEBUG_FRAME_SYNC_LOG
 			UE_LOG(LogTemp, Warning, TEXT("Out pins are waiting on %d") , 2 * frameNumber);
@@ -390,22 +403,29 @@ void NOSTextureShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, n
 	}
 }
 
-void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
+void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t FrameNumber)
 {
-	CheckAndUpdateTexturePinValues();
 	TMap<UTextureRenderTarget2D*, TSharedPtr<SharedResourceInfo>> CopiesFiltered;
 	GetActiveTextureCopiesWithShowAs(CopyShowAs, TextureProperties, CopiesFiltered);
 
 	//auto cmdData = GetNewCommandList();
+	const uint64_t ExpectedFenceEpoch = FenceEpoch.load();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this, CopyShowAs, CopiesFiltered, frameNumber = FrameCounter](FRHICommandListImmediate& RHICmdList)
+		[this, CopyShowAs, CopiesFiltered, FrameNumber, ExpectedFenceEpoch](FRHICommandListImmediate& RHICmdList)
 		{
+			FScopeLock Lock(&CriticalSectionState);
+			if (ExecutionState != nos::app::ExecutionState::SYNCED || FenceEpoch.load() != ExpectedFenceEpoch)
+			{
+				return;
+			}
 #ifdef DEBUG_NODOS_TEXTURE_COPIES
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Output, CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN, TEXT("Nodos Copies(Output)"));
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Input, CopyShowAs == nos::fb::ShowAs::INPUT_PIN, TEXT("Nodos Copies(Input)"));
 #endif
 			TMap<ID3D12Fence*, u64> SignalGroup;
-			SetupFences(RHICmdList, CopyShowAs, SignalGroup, frameNumber);
+			// FrameNumber comes directly from AppExecuteStart. Never derive cross-process
+			// fence values from the independently-running Unreal frame counter.
+			SetupFences(RHICmdList, CopyShowAs, SignalGroup, FrameNumber);
 			for (auto& [URT, pin] : CopiesFiltered)
 			{
 				FRHICopyTextureInfo CopyInfo;
@@ -438,15 +458,29 @@ void NOSTextureShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
 		});
 }
 
-void NOSTextureShareManager::OnBeginFrame()
+void NOSTextureShareManager::OnBeginFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::INPUT_PIN);
+	InitializeFenceEpoch(FrameNumber);
+	bOutputPublishedAtBeginForCurrentFrame = CVarNodosOutputAtBeginFrame.GetValueOnGameThread() != 0;
+	// Publish the render target produced by the previous Unreal frame first. This
+	// keeps the app/GPU handshake one frame deep: Nodos can consume frame N while
+	// Unreal imports frame N inputs and renders the next image. Waiting to publish
+	// until OnEndFrame serializes the full Unreal render into Nodos's frame budget.
+	if (bOutputPublishedAtBeginForCurrentFrame)
+	{
+		ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	}
+	ProcessCopies(nos::fb::ShowAs::INPUT_PIN, FrameNumber);
 }
 
-void NOSTextureShareManager::OnEndFrame()
+void NOSTextureShareManager::OnEndFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN);
-	FrameCounter++;
+	if (!bOutputPublishedAtBeginForCurrentFrame)
+	{
+		ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	}
+	bOutputPublishedAtBeginForCurrentFrame = false;
+	FrameCounter = FrameNumber + 1;
 	while(!ResourcesToDelete.IsEmpty())
 	{
 		auto* resource = ResourcesToDelete.Peek();
@@ -470,10 +504,15 @@ bool NOSTextureShareManager::SwitchStateToSynced()
 {
 	FScopeLock Lock(&CriticalSectionState);
 	RenewSemaphores();
+	const uint64_t ExpectedFenceEpoch = FenceEpoch.load();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this](FRHICommandListImmediate& RHICmdList)
+		[this, ExpectedFenceEpoch](FRHICommandListImmediate& RHICmdList)
 		{
-			ExecutionState = nos::app::ExecutionState::SYNCED;
+			FScopeLock StateLock(&CriticalSectionState);
+			if (FenceEpoch.load() == ExpectedFenceEpoch)
+			{
+				ExecutionState = nos::app::ExecutionState::SYNCED;
+			}
 		});
 
 	return true;
@@ -483,16 +522,31 @@ void NOSTextureShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumb
 {
 	FScopeLock Lock(&CriticalSectionState);
 	ExecutionState = nos::app::ExecutionState::IDLE;
-	for(int i = 0; i < 2; i++)
+	FenceEpoch.fetch_add(1);
+	// Do not advance shared fences here. During an orderly path reset Nodos drains
+	// the remaining timeline values before destroying its imported semaphores.
+	// Signalling UINT64_MAX here would make those smaller Vulkan signals invalid.
+}
+
+void NOSTextureShareManager::ForceReleaseFences_GRPCThread()
+{
+	FScopeLock Lock(&CriticalSectionState);
+	ExecutionState = nos::app::ExecutionState::IDLE;
+	FenceEpoch.fetch_add(1);
+
+	auto ForceRelease = [](ID3D12Fence* Fence)
 	{
-		if (InputFence && OutputFence)
+		if (Fence)
 		{
-			InputFence->Signal(UINT64_MAX);
-			OutputFence->Signal(UINT64_MAX);
+			Fence->Signal(UINT64_MAX);
 		}
-		FPlatformProcess::Sleep(0.2f);
+	};
+	ForceRelease(InputFence);
+	ForceRelease(OutputFence);
+	for (ID3D12Fence* Fence : RetiredFences)
+	{
+		ForceRelease(Fence);
 	}
-	FrameCounter = 0;
 }
 
 void NOSTextureShareManager::Reset()
@@ -541,26 +595,60 @@ void NOSTextureShareManager::Initiate()
 
 void NOSTextureShareManager::RenewSemaphores()
 {
-	if (InputFence)
-	{
-		::CloseHandle(SyncSemaphoresExportHandles.InputSemaphore);
-		InputFence->Release();
-		InputFence = nullptr;
+	ExecutionState = nos::app::ExecutionState::IDLE;
 
-	}
-	if (OutputFence)
+	auto RetireFence = [this](ID3D12Fence*& Fence, HANDLE& SharedHandle)
 	{
-		::CloseHandle(SyncSemaphoresExportHandles.OutputSemaphore);
-		OutputFence->Release();
-		OutputFence = nullptr;
-	}
+		if (SharedHandle)
+		{
+			::CloseHandle(SharedHandle);
+			SharedHandle = nullptr;
+		}
 
+		if (!Fence)
+		{
+			return;
+		}
+
+		if (bFenceEpochInitialized)
+		{
+			RetiredFences.Add(Fence);
+		}
+		else
+		{
+			Fence->Release();
+		}
+		Fence = nullptr;
+	};
+
+	RetireFence(InputFence, SyncSemaphoresExportHandles.InputSemaphore);
+	RetireFence(OutputFence, SyncSemaphoresExportHandles.OutputSemaphore);
+
+	bFenceEpochInitialized = false;
+	FenceEpoch.fetch_add(1);
 	FrameCounter = 0;
 	
-	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&InputFence));
-	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&OutputFence));
+	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&InputFence)));
+	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&OutputFence)));
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(InputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.InputSemaphore));
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(OutputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.OutputSemaphore));
+}
+
+void NOSTextureShareManager::InitializeFenceEpoch(uint64_t FrameNumber)
+{
+	FScopeLock Lock(&CriticalSectionState);
+	if (bFenceEpochInitialized || !InputFence || !OutputFence)
+	{
+		return;
+	}
+
+	const uint64_t InitialValue = 2 * FrameNumber;
+	if (InitialValue > 0)
+	{
+		NOS_D3D12_ASSERT_SUCCESS(InputFence->Signal(InitialValue));
+		NOS_D3D12_ASSERT_SUCCESS(OutputFence->Signal(InitialValue));
+	}
+	bFenceEpochInitialized = true;
 }
 
 SharedResourceInfo::~SharedResourceInfo()

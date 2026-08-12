@@ -85,7 +85,6 @@ public:
 	}
 
 private:
-
 	nos::fb::vec2u NodosDeltaTime{};
 };
 

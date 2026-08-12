@@ -16,6 +16,7 @@ void MemoryBarrier();
 #include "Windows/HideWindowsPlatformTypes.h"
 
 #include <shared_mutex>
+#include <atomic>
 
 #include "NOSActorProperties.h"
 #include "Nodos/AppAPI.h" 
@@ -56,8 +57,8 @@ struct CmdStruct
 
 struct SyncSemaphoresExport
 {
-	HANDLE InputSemaphore;
-	HANDLE OutputSemaphore;
+	HANDLE InputSemaphore = nullptr;
+	HANDLE OutputSemaphore = nullptr;
 };
 
 struct SharedResourceInfo
@@ -107,12 +108,17 @@ public:
 	void UpdatePinShowAs(NOSProperty* NosProperty, nos::fb::ShowAs NewShowAs);
 	void Reset();
 	void TextureDestroyed(NOSProperty* texture);
+	/// Refresh shared texture resources and pin orphan state without submitting GPU work.
+	/// This must run before the node becomes synchronized so Nodos can make the path live.
+	void UpdateTexturePinValues();
 	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
-	void ProcessCopies(nos::fb::ShowAs);
-	void OnBeginFrame();
-	void OnEndFrame();
+	void ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t FrameNumber);
+	void OnBeginFrame(uint64_t FrameNumber);
+	void OnEndFrame(uint64_t FrameNumber);
 	bool SwitchStateToSynced();
 	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
+	void ForceReleaseFences_GRPCThread();
+	uint64_t GetFenceEpoch() const { return FenceEpoch.load(); }
 
 	class FNOSClient* NOSClient;
 	
@@ -127,6 +133,7 @@ public:
 	uint64_t FrameCounter = 0;
 	ID3D12Fence* InputFence = nullptr;
 	ID3D12Fence* OutputFence= nullptr;
+	std::atomic<uint64_t> FenceEpoch{0};
 
 	mutable FCriticalSection CriticalSectionState;
 	
@@ -142,12 +149,18 @@ private:
 	/// All texture property values are checked against the current SharedResource destination each frame, so we must keep them
 	TMap<NOSProperty*, TSharedPtr<TexturePropertyInfo>> TextureProperties;
 
-	/// This compares the current SharedResource destination against the property's current render target(UE side)
-	/// If there is a difference, it creates a new SharedResource and deletes the old one
-	/// Also updates the nodos pin value and orphanness state
-	void CheckAndUpdateTexturePinValues();
-
+	/// Bootstrap newly created shared fences to the first real Nodos frame in the epoch.
+	void InitializeFenceEpoch(uint64_t FrameNumber);
 	void Initiate();
+	bool bFenceEpochInitialized = false;
+	// Latch the A/B scheduling mode at frame begin so a console change cannot
+	// publish an output twice or skip it between the begin/end callbacks.
+	bool bOutputPublishedAtBeginForCurrentFrame = false;
+	// RHI lambdas may still hold raw fence pointers after an epoch change. Keep
+	// retired objects alive so stale RHI work never dereferences a dangling pointer.
+	// Nodos owns orderly path-reset timeline recovery; these are force-signalled only
+	// after the connection is gone and the peer cannot submit any further signals.
+	TArray<ID3D12Fence*> RetiredFences;
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;
 	FRunnableThread* FailSafeThread = nullptr;
 };
