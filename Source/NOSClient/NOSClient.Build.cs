@@ -137,11 +137,16 @@ public class NOSClient : ModuleRules
 
 	public static NosIncludeDirs? GetSDKDir(string RelativeEnginePath)
 	{
-		string NosmanPath;
+		// Nosman sits in a Nodos workspace, beside the engine where a developer's link
+		// points. A build that keeps its workspace somewhere of its own says so in
+		// NOSMAN_PATH, which matters where several builds share one engine and would
+		// otherwise be reaching for the same folder.
+		string NosmanPath = Environment.GetEnvironmentVariable("NOSMAN_PATH");
 
-		ConfigHierarchy PlatformGameConfig = ConfigCache.ReadHierarchy(ConfigHierarchyType.EditorSettings, null, UnrealTargetPlatform.Win64);
-
-		PlatformGameConfig.GetString("/Script/NOSClient.NOSSettings", "NosmanPath", out NosmanPath);
+		if (String.IsNullOrEmpty(NosmanPath))
+		{
+			NosmanPath = Path.Combine("..", "Nodos", "nodos.exe");
+		}
 
 		if (!Path.IsPathRooted(NosmanPath))
 		{
@@ -149,12 +154,10 @@ public class NOSClient : ModuleRules
 			NosmanPath = Path.Combine(EngineDir, NosmanPath);
 		}
 
-
 		if(!File.Exists(NosmanPath))
 		{
-			string errorMessage = "Please verify Nosman Executable exist at " +
-				"(you can provide it from BaseEditorSettings.ini and it can be relative to Engine folder or it can be an absolute path) " + NosmanPath;
-			LogError(errorMessage, true);
+			LogError("Please verify Nosman Executable exist at " + NosmanPath +
+				" (or set NOSMAN_PATH to a nosman elsewhere)", true);
 			return null;
 		}
 
