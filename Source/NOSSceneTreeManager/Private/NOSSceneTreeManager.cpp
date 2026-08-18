@@ -878,7 +878,10 @@ void FNOSSceneTreeManager::OnPostWorldInit(UWorld* World, const UWorld::Initiali
 
 void FNOSSceneTreeManager::OnPreWorldFinishDestroy(UWorld* World)
 {
-	daWorld = nullptr;
+	if (World == daWorld)
+	{
+		daWorld = nullptr;
+	}
 }
 
 void FNOSSceneTreeManager::OnLevelAddedToWorld(ULevel* level, UWorld*)
