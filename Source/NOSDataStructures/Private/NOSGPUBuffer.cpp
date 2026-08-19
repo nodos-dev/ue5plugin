@@ -27,6 +27,14 @@ void UNOSGPUBuffer::AllocateBlocking(size_t SizeInBytes, const TCHAR* DebugName,
 				ResourceState,
 				UsageFlags
 			);
+
+			// Nodos can read this buffer before anything has been written into it,
+			// and it must not see whatever the allocation happened to hold.
+			if (void* Data = RHICmdList.LockBuffer(Buffer.Buffer, 0, SizeInBytes, RLM_WriteOnly))
+			{
+				FMemory::Memzero(Data, SizeInBytes);
+				RHICmdList.UnlockBuffer(Buffer.Buffer);
+			}
 		});
 	FlushRenderingCommands();
 }
