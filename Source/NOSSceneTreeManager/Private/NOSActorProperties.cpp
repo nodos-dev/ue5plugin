@@ -1207,7 +1207,10 @@ std::vector<uint8> NOSObjectProperty::UpdatePinValue(uint8* customContainer)
 { 
 	UObject* container = GetRawObjectContainer();
 
-	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()) // We only support texturetarget2d from object properties
+	// Either kind of shared resource can be replaced by a differently sized one,
+	// and the destination has to follow or the copies stop matching it.
+	if (objectprop->PropertyClass->IsChildOf<UTextureRenderTarget2D>()
+		|| objectprop->PropertyClass->IsChildOf<UNOSGPUBuffer>())
 	{
 		if (auto updatedResourceValue = NOSResourceShareManager::GetInstance()->GetUpdatedResourcePinValue(this))
 		{
