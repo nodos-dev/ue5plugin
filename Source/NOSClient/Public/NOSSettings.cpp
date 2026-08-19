@@ -3,8 +3,9 @@
 #include "NOSClient.h"
 
 UNOSSettings::UNOSSettings(const FObjectInitializer& ObjectInitializer)
+	// Where the installer puts Nodos, next to the engine folder.
+	: NosmanPath(TEXT("../Nodos/nodos.exe"))
 {
-
 }
 
 #if WITH_EDITOR

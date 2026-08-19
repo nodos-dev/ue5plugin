@@ -54,7 +54,10 @@ FString FNodos::GetNodosSDKDir()
 	FString NosmanPath = GET_NOS_CONFIG_VALUE(NosmanPath);
 	if (FPaths::IsRelative(NosmanPath))
 	{
-		NosmanPath = FPaths::Combine(FPaths::EngineDir(), NosmanPath);
+		// Anchor it to the engine folder rather than to wherever the editor was
+		// started from, and make it absolute so neither the check below nor nosman
+		// itself depends on the working directory staying put.
+		NosmanPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::EngineDir(), NosmanPath));
 	}
 
 	FString NosmanWorkingDirectory = FPaths::GetPath(NosmanPath);
