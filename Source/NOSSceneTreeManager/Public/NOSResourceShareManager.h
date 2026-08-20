@@ -15,6 +15,7 @@ void MemoryBarrier();
 #include <d3d12.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 
+#include <atomic>
 #include <shared_mutex>
 
 #include "NOSActorProperties.h"
@@ -57,8 +58,8 @@ struct CmdStruct
 
 struct SyncSemaphoresExport
 {
-	HANDLE InputSemaphore;
-	HANDLE OutputSemaphore;
+	HANDLE InputSemaphore = nullptr;
+	HANDLE OutputSemaphore = nullptr;
 };
 
 struct SharedResourceInfo
@@ -110,11 +111,22 @@ public:
 	void Reset();
 	void ResourceDestroyed(NOSProperty* texture);
 	void SetupFences(FRHICommandListImmediate& RHICmdList, nos::fb::ShowAs CopyShowAs, TMap<ID3D12Fence*, uint64_t>& SignalGroup, uint64_t frameNumber);
-	void ProcessCopies(nos::fb::ShowAs);
-	void OnBeginFrame();
-	void OnEndFrame();
+	/// Refresh shared resources and pin orphan state without submitting GPU work.
+	/// This has to run before the node can become synchronized, or a freshly
+	/// connected pin stays orphaned and Nodos never makes the path live.
+	void UpdateResourcePinValues();
+	void ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t FrameNumber);
+	void OnBeginFrame(uint64_t FrameNumber);
+	void OnEndFrame(uint64_t FrameNumber);
 	bool SwitchStateToSynced();
+	/// Bumped whenever the shared fences are replaced. Work tagged with an older
+	/// epoch belongs to fences that no longer exist and must not be completed.
+	uint64_t GetFenceEpoch() const { return FenceEpoch.load(); }
 	void SwitchStateToIdle_GRPCThread(uint64_t LastFrameNumber);
+	/// Only legal once the connection is gone: the peer can no longer submit
+	/// signals of its own, so forcing the timelines past everything cannot
+	/// invalidate a smaller signal it still had queued.
+	void ForceReleaseFences_GRPCThread();
 	void ImportResource(nos::fb::UUID const& pinId, std::variant<nos::sys::vulkan::TTexture, nos::sys::vulkan::Buffer> res);
 
 	class FNOSClient* NOSClient;
@@ -130,6 +142,7 @@ public:
 	uint64_t FrameCounter = 0;
 	ID3D12Fence* InputFence = nullptr;
 	ID3D12Fence* OutputFence= nullptr;
+	std::atomic<uint64_t> FenceEpoch{0};
 
 	mutable FCriticalSection CriticalSectionState;
 	
@@ -145,10 +158,15 @@ private:
 	/// All texture property values are checked against the current SharedResource destination each frame, so we must keep them
 	TMap<NOSProperty*, TSharedPtr<ResourcePropertyInfo>> ResourceProperties;
 
-	/// This compares the current SharedResource destination against the property's current render target(UE side)
-	/// If there is a difference, it creates a new SharedResource and deletes the old one
-	/// Also updates the nodos pin value and orphanness state
-	void CheckAndUpdateResourcePinValues();
+	/// Fresh fences start at zero, but Nodos may resume at any frame number, and
+	/// neither side can walk a shared timeline through the history it missed.
+	/// Seed both fences to 2 * FrameNumber once per fence generation.
+	void InitializeFenceEpoch(uint64_t FrameNumber);
+	bool bFenceEpochInitialized = false;
+	// RHI lambdas hold raw fence pointers and can outlive the epoch that made
+	// them. Keep replaced fences alive so stale work cannot dereference a freed
+	// object.
+	TArray<ID3D12Fence*> RetiredFences;
 
 	void Initiate();
 	class NOSGPUFailSafeRunnable* FailSafeRunnable = nullptr;

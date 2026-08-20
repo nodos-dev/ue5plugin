@@ -21,77 +21,149 @@
 #include "nosFlatBuffersCommon.h"
 #include "AppEvents_generated.h"
 #include <nosFlatBuffersCommon.h>
+#include <chrono>
+#include <condition_variable>
 #include <functional> 
 
 struct ExecuteInfo
 {
-	uint64_t FrameNumber;
+	uint64_t FrameNumber = 0;
 	TArray<TPair<uuids::uuid, nos::Buffer>> PinValueUpdates;
 };
+
+NOSCLIENT_API int32 GetNodosDeadlockWatchdogTimeoutMs();
+
 struct ExecuteFrameNumberQueue : public TQueue<ExecuteInfo>
 {
-	ExecuteInfo PopFrameNumber(uint64_t frameNumber, float maxWaitTime)
+	TOptional<ExecuteInfo> TryPopFrame()
 	{
-		ExecuteInfo executeInfo{};
-		DiscardExcessThenDequeue(executeInfo, frameNumber, true, maxWaitTime);
-		return executeInfo;
+		std::scoped_lock lock(Guard);
+
+		ExecuteInfo PendingExecute;
+		bool bDequeued = false;
+		while (Dequeue(PendingExecute))
+		{
+			if (LastDequeuedFrameNumber.IsSet() && PendingExecute.FrameNumber <= LastDequeuedFrameNumber.GetValue())
+			{
+				UE_LOG(LogCore, Warning, TEXT("Discarding stale Nodos execute frame %llu; last consumed frame is %llu"),
+					PendingExecute.FrameNumber, LastDequeuedFrameNumber.GetValue());
+				continue;
+			}
+
+			LastDequeuedFrameNumber = PendingExecute.FrameNumber;
+			bDequeued = true;
+			break;
+		}
+
+		if (LiveNow != bDequeued)
+		{
+			LiveNow = bDequeued;
+			UE_LOG(LogCore, Verbose, TEXT("Nodos execute queue is now %s"), LiveNow ? TEXT("live") : TEXT("idle"));
+		}
+
+		if (!bDequeued)
+		{
+			return {};
+		}
+
+		return MoveTemp(PendingExecute);
 	}
+
 	void EnqueueExecuteStart(nos::app::AppExecuteStart const* appExecuteStart)
 	{
-		ExecuteInfo start{};
-		start.FrameNumber = appExecuteStart->frame_counter();
-		if (auto* pinValueUpdates = appExecuteStart->pin_value_updates())
-			for (auto const& pinValueUpdate : *pinValueUpdates)
+		constexpr uint32 PathRecoveryTickBudget = 100;
+		const bool bReset = appExecuteStart->reset();
+		{
+			std::scoped_lock lock(Guard);
+			if (bReset)
 			{
-				uuids::uuid pinId(pinValueUpdate->pin_id()->bytes()->begin(), pinValueUpdate->pin_id()->bytes()->end());
-				start.PinValueUpdates.Emplace(pinId, nos::Buffer(pinValueUpdate->value()->data(), pinValueUpdate->value()->size()));
+				// This marker means a Nodos path stopped; it is not itself a synchronization
+				// epoch reset. Nodos still accounts for every AppExecuteStart already sent,
+				// so keep the queued requests and return their completions. A real IDLE
+				// transition clears the queue in ResetForNewSyncEpoch.
+				// Refilling a deep ring can take several Unreal frames before Nodos can
+				// resume issuing requests, so give that recovery a bounded number of
+				// ordinary ticks. This never paces normal synchronized frames.
+				MaintenanceTicksRemaining = FMath::Max(MaintenanceTicksRemaining, PathRecoveryTickBudget);
 			}
-		if (appExecuteStart->reset())
+			else
+			{
+				ExecuteInfo Start;
+				Start.FrameNumber = appExecuteStart->frame_counter();
+				if (auto* PinValueUpdates = appExecuteStart->pin_value_updates())
+				{
+					for (auto const& PinValueUpdate : *PinValueUpdates)
+					{
+						uuids::uuid PinId(PinValueUpdate->pin_id()->bytes()->begin(), PinValueUpdate->pin_id()->bytes()->end());
+						Start.PinValueUpdates.Emplace(PinId, nos::Buffer(PinValueUpdate->value()->data(), PinValueUpdate->value()->size()));
+					}
+				}
+				Enqueue(MoveTemp(Start));
+			}
+		}
+
+		if (bReset)
+		{
+			FrameAvailable.notify_all();
+		}
+		else
+		{
+			FrameAvailable.notify_one();
+		}
+	}
+
+	bool WaitForFrame()
+	{
+		std::unique_lock lock(Guard);
+		// The game thread services reconnection and queued state changes, so an
+		// unbounded wait here would block the very work that recovers the connection.
+		// State changes and connection close wake it immediately; this timeout only
+		// catches a callback that never arrives. It is a deadlock watchdog, not frame
+		// pacing.
+		const int32 DeadlockWatchdogTimeoutMs = GetNodosDeadlockWatchdogTimeoutMs();
+		const bool bWoken = FrameAvailable.wait_for(lock, std::chrono::milliseconds(DeadlockWatchdogTimeoutMs),
+			[this]() { return !bSynchronized || MaintenanceTicksRemaining > 0 || !IsEmpty(); });
+		if (!bWoken && bSynchronized)
+		{
+			UE_LOG(LogCore, Error, TEXT("Timed out waiting %d ms for a Nodos execute frame; releasing the game thread to recover"),
+				DeadlockWatchdogTimeoutMs);
+		}
+		if (MaintenanceTicksRemaining > 0)
+		{
+			--MaintenanceTicksRemaining;
+		}
+		return bWoken && bSynchronized && !IsEmpty();
+	}
+
+	void StartSyncEpoch()
+	{
+		{
+			std::scoped_lock lock(Guard);
+			bSynchronized = true;
+		}
+		FrameAvailable.notify_all();
+	}
+
+	void ResetForNewSyncEpoch()
+	{
 		{
 			std::scoped_lock lock(Guard);
 			Empty();
+			LastDequeuedFrameNumber.Reset();
+			LiveNow = false;
+			MaintenanceTicksRemaining = 0;
+			bSynchronized = false;
 		}
-		else
-			Enqueue(std::move(start));
+		FrameAvailable.notify_all();
 	}
+
 private:
-	void DiscardExcessThenDequeue(ExecuteInfo& result, uint64_t requestedFrameNumber, bool wait, float maxWaitTime)
-	{
-		std::scoped_lock lock(Guard);
-		uint32_t tryCount = 0;
-		bool dequeued = false;
-		bool oldLiveNow = LiveNow;
-		constexpr int retryCount = 20;
-		FPlatformProcess::ConditionalSleep([&]()
-			{
-				while (Peek(result))
-				{
-					LiveNow = true;
-					dequeued = true;
-					if (result.FrameNumber <= requestedFrameNumber)
-					{
-						ExecuteInfo pop;
-						Pop();
-					}
-					if (result.FrameNumber >= requestedFrameNumber)
-					{
-						return true;
-					}
-				}
-
-				return !LiveNow || !wait || tryCount++ > retryCount;
-			}, maxWaitTime / retryCount);
-
-		LiveNow = dequeued;
-		if (oldLiveNow != LiveNow)
-			UE_LOG(LogCore, Warning, TEXT("LiveNow Changed"));
-
-		if (LiveNow && result.FrameNumber != requestedFrameNumber)
-			UE_LOG(LogCore, Warning, TEXT("Mismatch between popped frame number and requested frame number: %i, %i"), result.FrameNumber, requestedFrameNumber);
-	}
-	
-	bool LiveNow = true;
+	bool LiveNow = false;
+	bool bSynchronized = false;
+	uint32 MaintenanceTicksRemaining = 0;
+	TOptional<uint64_t> LastDequeuedFrameNumber;
 	std::mutex Guard;
+	std::condition_variable FrameAvailable;
 };
 
 class UNOSCustomTimeStep;
@@ -278,6 +350,7 @@ public:
 
 	//Called when the node is executed from Nodos
 	void OnUpdatedNodeExecuted(nos::fb::vec2u deltaSeconds);
+	bool WaitForExecuteFrame();
 
 	bool ExecuteConsoleCommand(const TCHAR* Input);
 
@@ -316,6 +389,7 @@ public:
 	Chain<FNOSNodeSelected> OnNOSNodeSelected;
 	Chain<FNOSNodeImported> OnNOSNodeImported;
 	Chain<FNOSConnectionClosed> OnNOSConnectionClosed;
+	TMulticastDelegate<void(), FDefaultTSDelegateUserPolicy> OnNOSConnectionClosed_GRPCThread;
 	TMulticastDelegate<void(nos::app::ExecutionState), FDefaultTSDelegateUserPolicy> OnNOSStateChanged_GRPCThread;
 	TMulticastDelegate<void(const TArray<FString>&), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
 	Chain<FNOSActorSpawnedDestroyed> OnNOSActorSpawnedDestroyed;

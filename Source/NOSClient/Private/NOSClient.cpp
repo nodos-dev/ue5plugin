@@ -39,6 +39,17 @@ DEFINE_LOG_CATEGORY(LogNOSClient);
 #define LOG(x) UE_LOG(LogNOSClient, Display, TEXT(x))
 #define LOGF(x, y) UE_LOG(LogNOSClient, Display, TEXT(x), y)
 
+static TAutoConsoleVariable<int32> CVarNodosDeadlockWatchdogTimeoutMs(
+	TEXT("reality.nodos.timeout"),
+	80,
+	TEXT("Maximum time in milliseconds to wait for a Nodos execute frame before releasing one Unreal tick for deadlock recovery."),
+	ECVF_Default);
+
+int32 GetNodosDeadlockWatchdogTimeoutMs()
+{
+	return FMath::Max(CVarNodosDeadlockWatchdogTimeoutMs.GetValueOnAnyThread(), 1);
+}
+
 FGuid FNOSClient::NodeId = {};
 FString FNOSClient::AppKey = "";
 
@@ -451,6 +462,18 @@ void FNOSClient::Connected_GrpcThread()
 
 void FNOSClient::OnStateChanged_GrpcThread(nos::app::ExecutionState newState)
 {
+	if (EventDelegates)
+	{
+		if (newState == nos::app::ExecutionState::SYNCED)
+		{
+			EventDelegates->ExecuteQueue.StartSyncEpoch();
+		}
+		else
+		{
+			EventDelegates->ExecuteQueue.ResetForNewSyncEpoch();
+		}
+	}
+
 	OnNOSStateChanged_GRPCThread.Broadcast(newState);
 
 	TaskQueue.Enqueue([this, newState]()
@@ -495,6 +518,11 @@ void FNOSClient::NodeImported_GrpcThread(const nos::fb::Node& node)
 		});
 }
 
+bool FNOSClient::WaitForExecuteFrame()
+{
+	return EventDelegates && EventDelegates->ExecuteQueue.WaitForFrame();
+}
+
 void FNOSClient::NodeRemoved_GrpcThread()
 {
 	ensureMsgf(NodePresent_GrpcThread, TEXT("Node is not present on remove from Nodos!"));
@@ -522,6 +550,18 @@ void FNOSClient::NodeRemoved_GrpcThread()
 
 void FNOSClient::Disconnected_GrpcThread()
 {
+	if (EventDelegates)
+	{
+		// Losing the connection ends the epoch even when Nodos vanished before it
+		// could remove the node or send an IDLE transition.
+		EventDelegates->ExecuteQueue.ResetForNewSyncEpoch();
+	}
+
+	// The peer can no longer advance the shared timelines, so release outstanding
+	// external waits here rather than on the game thread: a blocked render or RHI
+	// thread would otherwise keep the connection-close work from ever running.
+	OnNOSConnectionClosed_GRPCThread.Broadcast();
+
 	if (NodePresent_GrpcThread)
 	{
 		NodeRemoved_GrpcThread();
