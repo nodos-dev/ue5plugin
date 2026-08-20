@@ -57,7 +57,7 @@ public:
 	TMap<TPair<void*, UFunction*>, TSharedPtr<NOSFunction>> FunctionsByContainerAndUEFunction;
 	void Reset(bool ResetPortals = true);
 
-	void OnBeginFrame();
+	TOptional<uint64_t> OnBeginFrame(bool bConsumeExecuteFrame);
 	void OnEndFrame();
 };
 
@@ -343,6 +343,12 @@ public:
 	nos::app::ExecutionState ExecutionState = nos::app::ExecutionState::IDLE;
 
 	bool ToggleExecutionStateToSynced = false;
+	// The Nodos request this Unreal frame belongs to. Everything the frame does,
+	// pin updates, copies, fence values and the completion, uses this one number.
+	TOptional<uint64_t> ActiveNodosFrameNumber;
+	// The fence generation that frame belongs to. A begin/end pair may not cross
+	// an epoch boundary.
+	TOptional<uint64_t> ActiveNodosFenceEpoch;
 	bool ShowHiddenActorsOnNodos = false;
 
 	bool AlwaysUpdateOnActorSpawns = false;

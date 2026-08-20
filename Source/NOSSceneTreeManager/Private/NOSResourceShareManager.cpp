@@ -299,7 +299,7 @@ void NOSResourceShareManager::ImportResource(nos::fb::UUID const& pinId, std::va
 	NOSClient->AppServiceClient->Send(root);
 }
 
-void NOSResourceShareManager::CheckAndUpdateResourcePinValues()
+void NOSResourceShareManager::UpdateResourcePinValues()
 {
 	/// This should only send pin values for non-broadcasted property value changes since they are already handled in NOSSceneTreeManager's code
 	for (auto const& [Prop, ResPropInfo] : ResourceProperties)
@@ -547,16 +547,27 @@ void NOSResourceShareManager::SetupFences(FRHICommandListImmediate& RHICmdList, 
 	}
 }
 
-void NOSResourceShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
+void NOSResourceShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t FrameNumber)
 {
-	CheckAndUpdateResourcePinValues();
 	TArray<TPair<TSharedPtr<SharedResourceInfo>, TObjectPtr<UObject>>> CopiesFiltered;
 	GetActiveResourceCopiesWithShowAs(CopyShowAs, ResourceProperties, CopiesFiltered);
 
 	//auto cmdData = GetNewCommandList();
+	const uint64_t ExpectedFenceEpoch = FenceEpoch.load();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this, CopyShowAs, CopiesFiltered, frameNumber = FrameCounter](FRHICommandListImmediate& RHICmdList)
+		// FrameNumber comes straight from AppExecuteStart. Cross-process fence values
+		// must never be derived from Unreal's own frame counter, which runs
+		// independently of the Nodos timeline.
+		[this, CopyShowAs, CopiesFiltered, frameNumber = FrameNumber, ExpectedFenceEpoch](FRHICommandListImmediate& RHICmdList)
 		{
+			FScopeLock Lock(&CriticalSectionState);
+			// The fences this work was queued against may have been replaced while it
+			// sat in the render queue. Signalling them now would advance a timeline
+			// nobody is waiting on and leave the live one stuck.
+			if (ExecutionState != nos::app::ExecutionState::SYNCED || FenceEpoch.load() != ExpectedFenceEpoch)
+			{
+				return;
+			}
 #ifdef DEBUG_NODOS_TEXTURE_COPIES
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Output, CopyShowAs == nos::fb::ShowAs::OUTPUT_PIN, TEXT("Nodos Copies(Output)"));
 			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, NodosCopies_Input, CopyShowAs == nos::fb::ShowAs::INPUT_PIN, TEXT("Nodos Copies(Input)"));
@@ -618,15 +629,16 @@ void NOSResourceShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs)
 		});
 }
 
-void NOSResourceShareManager::OnBeginFrame()
+void NOSResourceShareManager::OnBeginFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::INPUT_PIN);
+	InitializeFenceEpoch(FrameNumber);
+	ProcessCopies(nos::fb::ShowAs::INPUT_PIN, FrameNumber);
 }
 
-void NOSResourceShareManager::OnEndFrame()
+void NOSResourceShareManager::OnEndFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN);
-	FrameCounter++;
+	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	FrameCounter = FrameNumber + 1;
 	while(!ResourcesToDelete.IsEmpty())
 	{
 		auto* resource = ResourcesToDelete.Peek();
@@ -650,10 +662,15 @@ bool NOSResourceShareManager::SwitchStateToSynced()
 {
 	FScopeLock Lock(&CriticalSectionState);
 	RenewSemaphores();
+	const uint64_t ExpectedFenceEpoch = FenceEpoch.load();
 	ENQUEUE_RENDER_COMMAND(FNOSClient_CopyOnTick)(
-		[this](FRHICommandListImmediate& RHICmdList)
+		[this, ExpectedFenceEpoch](FRHICommandListImmediate& RHICmdList)
 		{
-			ExecutionState = nos::app::ExecutionState::SYNCED;
+			FScopeLock StateLock(&CriticalSectionState);
+			if (FenceEpoch.load() == ExpectedFenceEpoch)
+			{
+				ExecutionState = nos::app::ExecutionState::SYNCED;
+			}
 		});
 
 	return true;
@@ -663,16 +680,33 @@ void NOSResourceShareManager::SwitchStateToIdle_GRPCThread(uint64_t LastFrameNum
 {
 	FScopeLock Lock(&CriticalSectionState);
 	ExecutionState = nos::app::ExecutionState::IDLE;
-	for(int i = 0; i < 2; i++)
+	FenceEpoch.fetch_add(1);
+	// Do not advance the shared fences here. On an orderly path reset Nodos still
+	// drains the remaining values before dropping its imported semaphores, and a
+	// Vulkan timeline rejects anything that does not advance it: slamming
+	// UINT64_MAX would make every smaller signal it has queued invalid and leave
+	// whoever waits on them waiting forever.
+}
+
+void NOSResourceShareManager::ForceReleaseFences_GRPCThread()
+{
+	FScopeLock Lock(&CriticalSectionState);
+	ExecutionState = nos::app::ExecutionState::IDLE;
+	FenceEpoch.fetch_add(1);
+
+	auto ForceRelease = [](ID3D12Fence* Fence)
 	{
-		if (InputFence && OutputFence)
+		if (Fence)
 		{
-			InputFence->Signal(UINT64_MAX);
-			OutputFence->Signal(UINT64_MAX);
+			Fence->Signal(UINT64_MAX);
 		}
-		FPlatformProcess::Sleep(0.2f);
+	};
+	ForceRelease(InputFence);
+	ForceRelease(OutputFence);
+	for (ID3D12Fence* Fence : RetiredFences)
+	{
+		ForceRelease(Fence);
 	}
-	FrameCounter = 0;
 }
 
 void NOSResourceShareManager::Reset()
@@ -721,26 +755,64 @@ void NOSResourceShareManager::Initiate()
 
 void NOSResourceShareManager::RenewSemaphores()
 {
-	if (InputFence)
-	{
-		::CloseHandle(SyncSemaphoresExportHandles.InputSemaphore);
-		InputFence->Release();
-		InputFence = nullptr;
+	ExecutionState = nos::app::ExecutionState::IDLE;
 
-	}
-	if (OutputFence)
+	auto RetireFence = [this](ID3D12Fence*& Fence, HANDLE& SharedHandle)
 	{
-		::CloseHandle(SyncSemaphoresExportHandles.OutputSemaphore);
-		OutputFence->Release();
-		OutputFence = nullptr;
-	}
+		if (SharedHandle)
+		{
+			::CloseHandle(SharedHandle);
+			SharedHandle = nullptr;
+		}
 
+		if (!Fence)
+		{
+			return;
+		}
+
+		// Only a fence that took part in a synchronized epoch can still be
+		// referenced by queued RHI work.
+		if (bFenceEpochInitialized)
+		{
+			RetiredFences.Add(Fence);
+		}
+		else
+		{
+			Fence->Release();
+		}
+		Fence = nullptr;
+	};
+
+	RetireFence(InputFence, SyncSemaphoresExportHandles.InputSemaphore);
+	RetireFence(OutputFence, SyncSemaphoresExportHandles.OutputSemaphore);
+
+	bFenceEpochInitialized = false;
+	FenceEpoch.fetch_add(1);
 	FrameCounter = 0;
 	
-	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&InputFence));
-	Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&OutputFence));
+	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&InputFence)));
+	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&OutputFence)));
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(InputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.InputSemaphore));
 	NOS_D3D12_ASSERT_SUCCESS(Dev->CreateSharedHandle(OutputFence, 0, GENERIC_ALL, 0, &SyncSemaphoresExportHandles.OutputSemaphore));
+}
+
+void NOSResourceShareManager::InitializeFenceEpoch(uint64_t FrameNumber)
+{
+	FScopeLock Lock(&CriticalSectionState);
+	if (bFenceEpochInitialized || !InputFence || !OutputFence)
+	{
+		return;
+	}
+
+	// A CPU signal, used once, only to place the fresh timeline where Nodos
+	// already is. It is not part of per-frame synchronization.
+	const uint64_t InitialValue = 2 * FrameNumber;
+	if (InitialValue > 0)
+	{
+		NOS_D3D12_ASSERT_SUCCESS(InputFence->Signal(InitialValue));
+		NOS_D3D12_ASSERT_SUCCESS(OutputFence->Signal(InitialValue));
+	}
+	bFenceEpochInitialized = true;
 }
 
 SharedResourceInfo::~SharedResourceInfo()
