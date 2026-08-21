@@ -434,9 +434,11 @@ std::optional<nos::Buffer> NOSResourceShareManager::GetUpdatedResourcePinValue(N
 		(*resPropInfo)->ActiveDestinationSharedResource = std::move(newShareInfoAndBuf->first);
 		auto buf = newShareInfoAndBuf->second.As<nos::sys::vulkan::Buffer>();
 		ImportResource(reinterpret_cast<nos::fb::UUID const&>(NosProperty->Id), *buf);
+		return newShareInfoAndBuf->second;
 	}
+	// Neither kind of resource is on the property any more, and the destination
+	// that was here has just been dropped.
 	changePinOrphanness(true);
-	// Old was present but new is not, so return invalid texture
 	return NosProperty->TypeName == nos::sys::vulkan::Texture::GetFullyQualifiedName() ? invalidTexData : invalidBufData;
 }
 
