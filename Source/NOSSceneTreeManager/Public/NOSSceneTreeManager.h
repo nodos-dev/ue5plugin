@@ -170,6 +170,11 @@ public:
 	void PopulateAllChildsOfSceneComponentNode(SceneComponentNode* SceneComponentNode);
 
 	void SendSyncSemaphores(bool RenewSemaphores);
+	/// Ask Nodos to restart the synchronization for this node. Unreal cannot leave
+	/// the synchronized state on its own: it would stop signalling the shared
+	/// timelines while Nodos still waits on them. Nodos takes the node out and
+	/// back in, and both sides start a fresh epoch together.
+	void RequestSyncRecovery();
 	
 	//Called when the level is initiated
 	void OnPostWorldInit(UWorld* World, const UWorld::InitializationValues InitValues);

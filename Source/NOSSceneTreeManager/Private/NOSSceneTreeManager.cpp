@@ -2979,6 +2979,20 @@ void FNOSSceneTreeManager::PopulateAllChildsOfSceneComponentNode(SceneComponentN
 	}
 }
 
+void FNOSSceneTreeManager::RequestSyncRecovery()
+{
+	if (!NOSClient || !NOSClient->IsConnected() || !FNOSClient::NodeId.IsValid())
+	{
+		return;
+	}
+	flatbuffers::FlatBufferBuilder mb;
+	auto offset = nos::CreateAppEventOffset(mb, nos::app::CreateRecoverSync(mb, (nos::fb::UUID*)&FNOSClient::NodeId));
+	mb.Finish(offset);
+	auto buf = mb.Release();
+	auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+	NOSClient->AppServiceClient->Send(root);
+}
+
 void FNOSSceneTreeManager::SendSyncSemaphores(bool RenewSemaphores)
 {
 	if(!FNOSClient::NodeId.IsValid())
@@ -3152,6 +3166,14 @@ void FNOSSceneTreeManager::HandleWorldChange()
 		auto buf2 = mb2.Release();
 		auto root2 = flatbuffers::GetRoot<nos::PartialNodeUpdate>(buf2.data());
 		NOSClient->AppServiceClient->SendPartialNodeUpdate(root2);
+	}
+
+	// Every shared resource was replaced while Nodos was still running frames
+	// against the old ones. Restart the synchronization so the next epoch begins
+	// on the resources that exist now.
+	if (ExecutionState == nos::app::ExecutionState::SYNCED)
+	{
+		RequestSyncRecovery();
 	}
 
 	LOG("World change handled");
