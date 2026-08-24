@@ -163,6 +163,9 @@ private:
 	/// Seed both fences to 2 * FrameNumber once per fence generation.
 	void InitializeFenceEpoch(uint64_t FrameNumber);
 	bool bFenceEpochInitialized = false;
+	// The output schedule is latched for the current begin/end pair so changing
+	// the diagnostic CVar mid-frame cannot duplicate or omit a publication.
+	bool bOutputPublishedAtBeginForCurrentFrame = false;
 	// RHI lambdas hold raw fence pointers and can outlive the epoch that made
 	// them. Keep replaced fences alive so stale work cannot dereference a freed
 	// object.

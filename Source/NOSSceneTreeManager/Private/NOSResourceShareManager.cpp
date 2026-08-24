@@ -3,6 +3,7 @@
 #include "NOSResourceShareManager.h"
 
 #include "HardwareInfo.h"
+#include "HAL/IConsoleManager.h"
 
 #pragma warning (disable : 4800)
 #pragma warning (disable : 4668)
@@ -36,6 +37,14 @@
 #include "UObject/Package.h"
 
 NOSResourceShareManager* NOSResourceShareManager::singleton;
+
+static TAutoConsoleVariable<int32> CVarNodosOutputAtBeginFrame(
+	TEXT("reality.nodos.outputatbegin"),
+	1,
+	TEXT("Selects when Unreal publishes its shared output resources to Nodos.\n")
+	TEXT("  1: publish the previous render at frame begin so Unreal and Nodos overlap (default).\n")
+	TEXT("  0: publish the current render at frame end, matching the legacy serialized pipeline."),
+	ECVF_Default);
 
 //#define FAIL_SAFE_THREAD
 //#define DEBUG_FRAME_SYNC_LOG
@@ -632,12 +641,27 @@ void NOSResourceShareManager::ProcessCopies(nos::fb::ShowAs CopyShowAs, uint64_t
 void NOSResourceShareManager::OnBeginFrame(uint64_t FrameNumber)
 {
 	InitializeFenceEpoch(FrameNumber);
+	bOutputPublishedAtBeginForCurrentFrame = CVarNodosOutputAtBeginFrame.GetValueOnGameThread() != 0;
+	// Publish output resources produced by the previous Unreal frame before importing
+	// this frame's Nodos inputs. This keeps the cross-process GPU handshake one frame
+	// deep for both textures and buffers instead of serializing the entire Unreal
+	// render into Nodos's frame budget.
+	if (bOutputPublishedAtBeginForCurrentFrame)
+	{
+		ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	}
 	ProcessCopies(nos::fb::ShowAs::INPUT_PIN, FrameNumber);
 }
 
 void NOSResourceShareManager::OnEndFrame(uint64_t FrameNumber)
 {
-	ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	// Latch the mode at begin-frame so a console change between callbacks cannot
+	// publish an output twice or skip it.
+	if (!bOutputPublishedAtBeginForCurrentFrame)
+	{
+		ProcessCopies(nos::fb::ShowAs::OUTPUT_PIN, FrameNumber);
+	}
+	bOutputPublishedAtBeginForCurrentFrame = false;
 	FrameCounter = FrameNumber + 1;
 	while(!ResourcesToDelete.IsEmpty())
 	{
