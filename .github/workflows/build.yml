@@ -10,7 +10,7 @@ on:
       r5_branch:
         description: 'R5 branch to build against. Dots are stripped to find the checkout folder (5.8nos1.4 -> 58nos14).'
         required: true
-        default: '5.8nos1.4'
+        default: '5.8'
         type: string
       engine_root:
         description: 'Folder that holds the R5 checkouts on the runner'
