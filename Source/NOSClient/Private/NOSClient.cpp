@@ -735,13 +735,31 @@ void FNOSClient::StartupModule() {
 
 void FNOSClient::ShutdownModule()
 {
-	// AppServiceClient-/*>*/
-	if (NOSTimeStep)
+	// Stop callbacks before tearing down the client. OnDone may otherwise call back
+	// into this module while Unreal is already dismantling its UObject state.
+	if (AppServiceClient)
 	{
-		NOSTimeStep->RemoveFromRoot();
-		NOSTimeStep = nullptr;
+		AppServiceClient->ClearEventDelegates();
+		AppServiceClient.reset();
 	}
-	AppServiceClient.reset();
+	EventDelegates.Reset();
+
+	// During normal module reload the time step must be unrooted. During engine
+	// exit, however, ShutdownModule can run after GUObjectArray has been destroyed;
+	// even evaluating a stale TObjectPtr then attempts to resolve an invalid index.
+	if (UObjectInitialized())
+	{
+		if (UNOSCustomTimeStep* TimeStep = NOSTimeStep.Get())
+		{
+			if (GEngine && GEngine->GetCustomTimeStep() == TimeStep)
+			{
+				GEngine->SetCustomTimeStep(nullptr);
+			}
+			TimeStep->RemoveFromRoot();
+		}
+	}
+	NOSTimeStep = nullptr;
+
 	GNodos.Shutdown();
 
 	if (GEditor)
