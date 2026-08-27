@@ -249,7 +249,8 @@ public class NOSClient : ModuleRules
 					"SlateCore",
 					"UnrealEd",
 					"Json",
-					"DeveloperSettings"
+					"DeveloperSettings",
+					"TimeManagement"
 					}
 					);
 
