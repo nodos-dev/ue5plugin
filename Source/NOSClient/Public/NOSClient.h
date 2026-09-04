@@ -214,8 +214,14 @@ public:
 	void OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loadNodesOnPathsRequest) override;
 	void OnCloseApp() override;
 	void OnExecuteStart(nos::app::AppExecuteStart const* appExecuteStart) override;
+	void HandleEvent(const nos::app::EngineEvent* event) override;
 
 	FNOSClient* PluginClient;
+
+	//The request the event being handled belongs to, or null when it belongs to none.
+	//Only set while HandleEvent runs: it points into the event buffer Nodos owns, so copy
+	//it before handing work to another thread.
+	nos::fb::UUID const* CurrentRequestId = nullptr;
 
 	ExecuteFrameNumberQueue ExecuteQueue{};
 };
@@ -391,7 +397,7 @@ public:
 	Chain<FNOSConnectionClosed> OnNOSConnectionClosed;
 	TMulticastDelegate<void(), FDefaultTSDelegateUserPolicy> OnNOSConnectionClosed_GRPCThread;
 	TMulticastDelegate<void(nos::app::ExecutionState), FDefaultTSDelegateUserPolicy> OnNOSStateChanged_GRPCThread;
-	TMulticastDelegate<void(const TArray<FString>&), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
+	TMulticastDelegate<void(const TArray<FString>&, FGuid), FDefaultTSDelegateUserPolicy> OnNOSLoadNodesOnPaths;
 	Chain<FNOSActorSpawnedDestroyed> OnNOSActorSpawnedDestroyed;
 	// FNOSConsoleCommandExecuted OnNOSConsoleCommandExecuted;
 	

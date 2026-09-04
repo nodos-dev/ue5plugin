@@ -178,6 +178,15 @@ TMap<FGuid, const nos::fb::Pin*> ParsePins(const nos::fb::Node* archive)
 	return re;
 }
 
+//The SDK's dispatch narrows each event to a handler and drops the request id on the way.
+//Keep it here first so the handlers below can answer the request that caused them.
+void NOSEventDelegates::HandleEvent(const nos::app::EngineEvent* event)
+{
+	CurrentRequestId = event->request_id();
+	nos::app::AppEventDelegates::HandleEvent(event);
+	CurrentRequestId = nullptr;
+}
+
 void NOSEventDelegates::OnAppConnected()
 {	
 	if (!PluginClient)
@@ -275,9 +284,10 @@ void NOSEventDelegates::OnLoadNodesOnPaths(nos::app::LoadNodesOnPaths const* loa
 	{
 		Paths.Push(path->c_str());
 	}
-	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, Paths]()
+	FGuid RequestId = CurrentRequestId ? *(FGuid*)CurrentRequestId : FGuid();
+	PluginClient->TaskQueue.Enqueue([NOSClient = PluginClient, Paths, RequestId]()
 		{
-			NOSClient->OnNOSLoadNodesOnPaths.Broadcast(Paths);
+			NOSClient->OnNOSLoadNodesOnPaths.Broadcast(Paths, RequestId);
 		});
 }
 

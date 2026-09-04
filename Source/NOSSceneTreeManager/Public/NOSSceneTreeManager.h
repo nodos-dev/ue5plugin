@@ -169,7 +169,7 @@ public:
 
 	void OnNOSStateChanged_GRPCThread(nos::app::ExecutionState);
 	
-	void OnNOSLoadNodesOnPaths(const TArray<FString>& paths);
+	void OnNOSLoadNodesOnPaths(const TArray<FString>& paths, FGuid requestId);
 	//END OF Nodos DELEGATES
 	 
 	void PopulateAllChildsOfActor(FGuid ActorId, FNodeUpdateBatch* OptBatch = nullptr);

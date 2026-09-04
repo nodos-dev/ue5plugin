@@ -800,7 +800,7 @@ void FNOSSceneTreeManager::OnNOSStateChanged_GRPCThread(nos::app::ExecutionState
 	}
 }
 
-void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& Paths)
+void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& Paths, FGuid RequestId)
 {
 	const double OnNOSLoadNodesOnPathsStartTime = FPlatformTime::Seconds();
 
@@ -839,6 +839,21 @@ void FNOSSceneTreeManager::OnNOSLoadNodesOnPaths(const TArray<FString>& Paths)
 		auto appEventOffset = nos::CreateAppEventOffset(Batch.Builder, batchOffset);
 		Batch.Builder.Finish(appEventOffset);
 		auto buf = Batch.Builder.Release();
+		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
+		NOSClient->AppServiceClient->Send(root);
+	}
+
+	// Tell Nodos this LoadNodesOnPaths request is finished: every node update for it has now been
+	// sent. The instigator id lets the editor correlate this to its originating request.
+	if (NOSClient && NOSClient->IsConnected())
+	{
+		nos::fb::UUID instigator = *(nos::fb::UUID*)&RequestId;
+		flatbuffers::FlatBufferBuilder mb;
+		// Echo the request id back so the editor can correlate; omit it entirely if there was none.
+		auto appEvent = nos::app::CreateAppEvent(mb, nos::app::AppEventUnion::AppRequestCompleted,
+			nos::app::CreateAppRequestCompleted(mb).Union(), RequestId.IsValid() ? &instigator : nullptr);
+		mb.Finish(appEvent);
+		auto buf = mb.Release();
 		auto root = flatbuffers::GetRoot<nos::app::AppEvent>(buf.data());
 		NOSClient->AppServiceClient->Send(root);
 	}
