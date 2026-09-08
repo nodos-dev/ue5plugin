@@ -139,7 +139,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, 
 
 TSharedPtr<ActorNode> NOSSceneTree::AddActor(FString folderPath, AActor* actor, TSharedPtr<TreeNode>& mostRecentParent, FName uniqueName)
 {
-	if (!actor)
+	if (!IsValid(actor))
 	{
 		return nullptr;
 	}
@@ -180,7 +180,7 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor, FN
 	if (!IsValid(FNOSSceneTreeManager::daWorld))
 		return nullptr;
 
-	if (!actor)
+	if (!IsValid(actor))
 	{
 		return nullptr;
 	}
@@ -208,6 +208,11 @@ TSharedPtr<ActorNode> NOSSceneTree::AddActor(TreeNode* parent, AActor* actor, FN
 
 TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(ActorNode* parent, USceneComponent* sceneComponent)
 {
+	if (!IsValid(sceneComponent))
+	{
+		return nullptr;
+	}
+
 	TSharedPtr<SceneComponentNode>newComponentNode(new SceneComponentNode);
 	newComponentNode->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
 	newComponentNode->sceneComponent = NOSComponentReference(sceneComponent);
@@ -239,6 +244,11 @@ TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(ActorNode* parent
 
 TSharedPtr<SceneComponentNode> NOSSceneTree::AddSceneComponent(TSharedPtr<SceneComponentNode> parent, USceneComponent* sceneComponent)
 {
+	if (!IsValid(sceneComponent))
+	{
+		return nullptr;
+	}
+
 	TSharedPtr<SceneComponentNode> newComponentNode(new SceneComponentNode);
 	newComponentNode->nosMetaData.Add(NosMetadataKeys::PinnedCategories, "Transform");
 	newComponentNode->sceneComponent = NOSComponentReference(sceneComponent);

@@ -1830,11 +1830,14 @@ TSharedPtr<NOSProperty> NOSPropertyFactory::CreateProperty(UObject* container,
 
 NOSActorReference::NOSActorReference(TObjectPtr<AActor> actor)
 {
-	if (actor)
+	if (!IsValid(actor.Get()))
 	{
-		Actor = TWeakObjectPtr<AActor>(actor);
-		ActorGuid = Actor->GetActorGuid();
+		InvalidReference = true;
+		return;
 	}
+
+	Actor = TWeakObjectPtr<AActor>(actor);
+	ActorGuid = actor->GetActorGuid();
 }
 
 NOSActorReference::NOSActorReference()
@@ -1894,14 +1897,17 @@ bool NOSActorReference::UpdateActualActorPointer()
 }
 
 NOSComponentReference::NOSComponentReference(TObjectPtr<UActorComponent> actorComponent)
-	: Actor(actorComponent->GetOwner())
 {
-	if (actorComponent)
+	if (!IsValid(actorComponent.Get()))
 	{
-		Component = TWeakObjectPtr<UActorComponent>(actorComponent);
-		ComponentProperty = Component->GetFName();
-		PathToComponent = Component->GetPathName(Actor.Get());
+		InvalidReference = true;
+		return;
 	}
+
+	Actor = NOSActorReference(actorComponent->GetOwner());
+	Component = TWeakObjectPtr<UActorComponent>(actorComponent);
+	ComponentProperty = actorComponent->GetFName();
+	PathToComponent = actorComponent->GetPathName(Actor.Get());
 }
 
 NOSComponentReference::NOSComponentReference()

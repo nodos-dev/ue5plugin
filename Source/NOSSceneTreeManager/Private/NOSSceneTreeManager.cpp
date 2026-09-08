@@ -2254,7 +2254,7 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 			if(child->IsValidLowLevel() && !SceneTree.GetNode(child))
 			{
 				auto newActor = SceneTree.AddActor(actorNode, child);
-				if (ColoredChilds)
+				if (newActor && ColoredChilds)
 				{
 					newActor->nosMetaData.Add("NodeColor", HEXCOLOR_Reality_Node);
 				}
@@ -2292,6 +2292,11 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 
 		TFunction<void(USceneComponent*, TSharedPtr<TreeNode>)> AddInstancedComponentsRecursive = [&, this](USceneComponent* Component, TSharedPtr<TreeNode> ParentHandle)
 		{
+			if (!ParentHandle)
+			{
+				return;
+			}
+
 			if (Component != nullptr)
 			{
 				for (USceneComponent* ChildComponent : Component->GetAttachChildren())
@@ -2315,7 +2320,7 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 
 						if (!NewParentHandle)
 						{
-							LOG("A Child node other than actor or component is present!");
+							LOG("Skipped a child component that could not be added to the tree");
 							continue;
 						}
 						if(ColoredChilds)
@@ -2377,6 +2382,10 @@ bool FNOSSceneTreeManager::PopulateNode(TreeNode* treeNode)
 	else if (treeNode->GetAsSceneComponentNode())
 	{
 		auto Component = treeNode->GetAsSceneComponentNode()->sceneComponent;
+		if (!IsValid(Component.Get()))
+		{
+			return false;
+		}
 		auto Actor = Component->GetOwner();
 		auto ComponentNode = treeNode->GetAsSceneComponentNode();
 		auto ComponentClass = Component->GetClass();
